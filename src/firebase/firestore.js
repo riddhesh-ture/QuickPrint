@@ -1,21 +1,41 @@
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+import app from './config.js';
+import { getFirestore, collection, addDoc, serverTimestamp, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: "AIzaSyBJrAsrM9uG-IASLrhWURMaz5d4gEF44dA",
-  authDomain: "quickprint-official.firebaseapp.com",
-  projectId: "quickprint-official",
-  storageBucket: "quickprint-official.firebasestorage.app",
-  messagingSenderId: "876471482977",
-  appId: "1:876471482977:web:f65d816bbd8c8ab5a88820",
-  measurementId: "G-VT7W8B76G3"
+const db = getFirestore(app);
+
+/**
+ * Creates a new print job document in Firestore.
+ * @param {object} jobData The data for the print job.
+ * @returns {Promise<void>}
+ */
+export const createPrintJob = (jobData) => {
+  const jobsCollection = collection(db, 'printJobs');
+  return addDoc(jobsCollection, {
+    ...jobData,
+    status: 'pending', // Initial status
+    createdAt: serverTimestamp(),
+  });
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+/**
+ * Updates the status of a print job.
+ * @param {string} jobId The ID of the job to update.
+ * @param {string} status The new status (e.g., 'completed', 'cancelled').
+ * @returns {Promise<void>}
+ */
+export const updateJobStatus = (jobId, status) => {
+  const jobRef = doc(db, 'printJobs', jobId);
+  return updateDoc(jobRef, { status });
+};
 
-export default app;
+/**
+ * Deletes a print job from Firestore.
+ * @param {string} jobId The ID of the job to delete.
+ * @returns {Promise<void>}
+ */
+export const deletePrintJob = (jobId) => {
+  const jobRef = doc(db, 'printJobs', jobId);
+  return deleteDoc(jobRef);
+};
+
+export { db };
