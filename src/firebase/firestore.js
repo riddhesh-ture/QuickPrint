@@ -1,3 +1,4 @@
+// src/firebase/firestore.js
 import app from './config.js';
 import { getFirestore, collection, addDoc, serverTimestamp, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 
@@ -6,26 +7,26 @@ const db = getFirestore(app);
 /**
  * Creates a new print job document in Firestore.
  * @param {object} jobData The data for the print job.
- * @returns {Promise<void>}
+ * @returns {Promise<DocumentReference>} A promise that resolves with the new document's reference.
  */
 export const createPrintJob = (jobData) => {
   const jobsCollection = collection(db, 'printJobs');
   return addDoc(jobsCollection, {
     ...jobData,
-    status: 'pending', // Initial status
+    // Status is now set in the component for more control, but you can default it here
     createdAt: serverTimestamp(),
   });
 };
 
 /**
- * Updates the status of a print job.
+ * Updates a print job with new data.
  * @param {string} jobId The ID of the job to update.
- * @param {string} status The new status (e.g., 'completed', 'cancelled').
+ * @param {object} data The data object with fields to update (e.g., { status: 'completed', cost: 15.50 }).
  * @returns {Promise<void>}
  */
-export const updateJobStatus = (jobId, status) => {
+export const updatePrintJob = (jobId, data) => {
   const jobRef = doc(db, 'printJobs', jobId);
-  return updateDoc(jobRef, { status });
+  return updateDoc(jobRef, data);
 };
 
 /**
@@ -35,6 +36,7 @@ export const updateJobStatus = (jobId, status) => {
  */
 export const deletePrintJob = (jobId) => {
   const jobRef = doc(db, 'printJobs', jobId);
+  // Note: This does not delete the file from Storage. You'd need a separate function for that.
   return deleteDoc(jobRef);
 };
 

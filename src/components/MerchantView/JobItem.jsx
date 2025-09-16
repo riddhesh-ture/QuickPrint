@@ -1,81 +1,93 @@
-import React from 'react';
+// src/components/MerchantView/JobItem.jsx
+import React, { useState } from 'react';
 import {
   ListItem,
   ListItemText,
-  Collapse,
-  List,
-  Box,
   Typography,
-  IconButton,
+  Box,
   Button,
+  TextField,
   Divider,
-  Chip,
+  Chip
 } from '@mui/material';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ExpandLessIcon from '@mui/icons-material/ExpandLess';
-import { updateJobStatus, deletePrintJob } from '../../firebase/firestore';
 
-const FileSpecDetail = ({ label, value }) => (
-  <Typography variant="body2" component="span" sx={{ mr: 2 }}>
-    <strong>{label}:</strong> {value}
-  </Typography>
-);
+// This component receives functions as props. It does NOT call Firestore directly.
+export default function JobItem({ job, onCalculateCost, onCompleteJob, onDeleteJob }) {
+  const [cost, setCost] = useState('');
 
-export default function JobItem({ job }) {
-  const [open, setOpen] = React.useState(false);
-
-  const handleStatusChange = (status) => {
-    updateJobStatus(job.id, status).catch(console.error);
-  };
-
-  const handleDelete = () => {
-    if (window.confirm('Are you sure you want to delete this job?')) {
-      deletePrintJob(job.id).catch(console.error);
+  const renderActions = () => {
+    switch (job.status) {
+      case 'pending':
+        return (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+            <TextField
+              label="Cost ($)"
+              size="small"
+              variant="outlined"
+              value={cost}
+              onChange={(e) => setCost(e.target.value)}
+              sx={{ width: '100px' }}
+            />
+            {/* This calls the function passed in via props */}
+            <Button
+              variant="contained"
+              size="small"
+              onClick={() => onCalculateCost(job.id, cost)}
+            >
+              Set Cost
+            </Button>
+          </Box>
+        );
+      case 'awaitingPayment':
+        return <Chip label="Waiting for payment" color="warning" size="small" sx={{ mt: 1 }} />;
+      case 'paid':
+        return (
+          <Button
+            variant="contained"
+            color="success"
+            size="small"
+            onClick={() => onCompleteJob(job.id)} // Calls the prop function
+            sx={{ mt: 1 }}
+          >
+            Mark as Complete
+          </Button>
+        );
+      case 'completed':
+        return <Chip label="Completed" color="success" size="small" sx={{ mt: 1 }} />;
+      default:
+        return null;
     }
   };
 
   return (
-    <ListItem sx={{ flexDirection: 'column', alignItems: 'stretch' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+    <>
+      <ListItem alignItems="flex-start" sx={{ flexDirection: 'column' }}>
         <ListItemText
-          primary={`Job from ${job.createdAt?.toDate().toLocaleTimeString()}`}
-          secondary={`${job.files.length} file(s)`}
+          primary={<Typography variant="subtitle1">Job ID: {job.id}</Typography>}
+          secondary={`Received: ${new Date(job.createdAt?.seconds * 1000).toLocaleString()}`}
         />
-        <Chip label={job.status} color={job.status === 'pending' ? 'warning' : 'success'} size="small" />
-        <IconButton onClick={() => setOpen(!open)}>{open ? <ExpandLessIcon /> : <ExpandMoreIcon />}</IconButton>
-      </Box>
-      <Collapse in={open} timeout="auto" unmountOnExit>
-        <List component="div" disablePadding sx={{ pl: 2, mt: 1 }}>
+        
+        <Box sx={{ my: 1, pl: 2 }}>
           {job.files.map((file, index) => (
-            <React.Fragment key={index}>
-              <ListItem sx={{ flexDirection: 'column', alignItems: 'flex-start' }}>
-                <Typography variant="subtitle1">
-                  <a href={file.url} target="_blank" rel="noopener noreferrer">
-                    {file.name}
-                  </a>
-                </Typography>
-                <Box>
-                  <FileSpecDetail label="Copies" value={file.specs.copies} />
-                  <FileSpecDetail label="Pages" value={file.specs.pages || 'All'} />
-                  <FileSpecDetail label="Color" value={file.specs.color === 'bw' ? 'B&W' : 'Color'} />
-                  <FileSpecDetail label="Sides" value={file.specs.sides} />
-                </Box>
-              </ListItem>
-              <Divider />
-            </React.Fragment>
+            <Typography key={index} variant="body2">
+              - <strong>{file.name}</strong> (Copies: {file.specs.copies})
+            </Typography>
           ))}
-        </List>
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, p: 2 }}>
-          {job.status === 'pending' && (
-            <Button size="small" variant="contained" onClick={() => handleStatusChange('completed')}>
-              Mark as Completed
-            </Button>
-          )}
-          <Button size="small" variant="outlined" color="error" onClick={handleDelete}>
-            Delete
-          </Button>
         </Box>
-      </Collapse>
-    </ListItem>
+
+        <Box sx={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center' }}>
+            {renderActions()}
+            <Button
+                variant="outlined"
+                color="error"
+                size="small"
+                onClick={() => onDeleteJob(job.id)} // Calls the prop function
+            >
+                Delete
+            </Button>
+        </Box>
+      </ListItem>
+      <Divider />
+    </>
   );
 }
