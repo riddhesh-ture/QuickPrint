@@ -1,38 +1,83 @@
 // src/App.jsx
 import React from 'react';
-import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { Routes, Route, Navigate, Outlet, useNavigate } from 'react-router-dom'; // <--- ADDED useNavigate HERE
+import { useAuth, signOutMerchant } from './firebase/auth';
 
 // Import all your page components
-import HomePage from './pages/HomePage';
+import HomePage from './pages/HomePage'; // User scan page
 import UserPrintPage from './pages/UserPrintPage';
-import LoginPage from './pages/LoginPage';
+import LoginPage from './pages/LoginPage'; // Merchant login
+import SignupPage from './pages/SignupPage'; // Merchant signup
 import MerchantDashboardPage from './pages/MerchantDashboardPage';
+import { AppBar, Toolbar, Typography, Button, Box } from '@mui/material';
 
 // A component to protect merchant routes
 const ProtectedRoute = () => {
-  // For this example, we'll use localStorage to simulate an auth state.
-  // In a real app, you would use a proper Auth Context.
-  const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+  const { isAuthenticated, merchantId } = useAuth(); // Use the auth hook
 
-  return isAuthenticated ? <Outlet /> : <Navigate to="/merchant/login" replace />;
+  if (!isAuthenticated) {
+    return <Navigate to="/merchant/login" replace />;
+  }
+
+  // Pass merchantId as context or prop if needed by child routes
+  return <Outlet context={{ merchantId }} />;
 };
+
+const Layout = () => {
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate(); // <-- This is now correctly defined
+
+  const handleLogout = async () => {
+    await signOutMerchant();
+    navigate('/merchant/login');
+  };
+
+  return (
+    <>
+      <AppBar position="static">
+        <Toolbar>
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+            QuickPrint
+          </Typography>
+          {isAuthenticated && (
+            <Button color="inherit" onClick={handleLogout}>
+              Logout
+            </Button>
+          )}
+          {!isAuthenticated && (
+            <Button color="inherit" onClick={() => navigate('/merchant/login')}>
+              Merchant Area
+            </Button>
+          )}
+        </Toolbar>
+      </AppBar>
+      <Outlet /> {/* Renders the current route's component */}
+    </>
+  );
+};
+
 
 export default function App() {
   return (
     <Routes>
-      {/* --- User Facing Routes --- */}
-      <Route path="/" element={<HomePage />} />
-      <Route path="/print" element={<UserPrintPage />} />
+      <Route path="/" element={<Layout />}>
+        {/* --- Public User Routes --- */}
+        <Route index element={<HomePage />} /> {/* User QR Scan page */}
+        <Route path="/print" element={<UserPrintPage />} />
 
-      {/* --- Merchant Facing Routes --- */}
-      <Route path="/merchant/login" element={<LoginPage />} />
-      <Route path="/merchant/dashboard" element={<ProtectedRoute />}>
-        {/* This nested route will only render if the user is authenticated */}
-        <Route index element={<MerchantDashboardPage />} />
+        {/* --- Merchant Authentication Routes --- */}
+        <Route path="/merchant/login" element={<LoginPage />} />
+        <Route path="/merchant/signup" element={<SignupPage />} />
+
+        {/* --- Protected Merchant Routes --- */}
+        <Route path="/merchant" element={<ProtectedRoute />}>
+          <Route path="dashboard" element={<MerchantDashboardPage />} />
+          {/* Add other protected merchant routes here */}
+        </Route>
+
+        {/* --- Fallback Route --- */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
-
-      {/* --- Fallback Route --- */}
-      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

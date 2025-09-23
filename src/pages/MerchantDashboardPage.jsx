@@ -4,12 +4,17 @@ import { Container, Typography, Box, Alert } from '@mui/material';
 import PrintQueue from '../components/MerchantView/PrintQueue';
 import MerchantProfile from '../components/MerchantView/MerchantProfile';
 import { useCollection } from '../hooks/useFirestore';
-import { updatePrintJob, deletePrintJob } from '../firebase/firestore'; // Ensure you have these functions exported
+import { updatePrintJob, deletePrintJob } from '../firebase/firestore';
+import { useOutletContext } from 'react-router-dom'; // Import useOutletContext
 
 export default function MerchantDashboardPage() {
-  // In a real application, you would get the merchantId from your authentication context.
-  // For now, we'll hardcode it for this demonstration.
-  const merchantId = 'merchant-abc'; // IMPORTANT: This should be a unique ID for the merchant.
+  // Get merchantId from the Outlet context provided by ProtectedRoute
+  const { merchantId } = useOutletContext(); 
+
+  // Fallback if for some reason merchantId isn't available (shouldn't happen with ProtectedRoute)
+  if (!merchantId) {
+    return <Alert severity="error">Merchant ID not found. Please log in again.</Alert>;
+  }
 
   // Use the real-time hook to listen for new print jobs for this merchant.
   const { documents: jobs, error } = useCollection('printJobs', {
@@ -18,11 +23,6 @@ export default function MerchantDashboardPage() {
     value: merchantId,
   });
 
-  /**
-   * Handles the "Calculate Cost" action from the merchant.
-   * This updates the job in Firestore with a cost and changes its status,
-   * which the user will see in real-time.
-   */
   const handleCalculateCost = async (jobId, cost) => {
     const parsedCost = parseFloat(cost);
     if (!parsedCost || isNaN(parsedCost) || parsedCost <= 0) {
@@ -32,7 +32,7 @@ export default function MerchantDashboardPage() {
     try {
       await updatePrintJob(jobId, {
         cost: parsedCost,
-        status: 'awaitingPayment', // This status triggers the payment UI on the user's side
+        status: 'awaitingPayment',
       });
     } catch (e) {
       console.error("Failed to update job with cost:", e);
@@ -40,9 +40,6 @@ export default function MerchantDashboardPage() {
     }
   };
 
-  /**
-   * Handles the "Complete Job" action after the file has been printed.
-   */
   const handleCompleteJob = async (jobId) => {
     try {
       await updatePrintJob(jobId, { status: 'completed' });
@@ -52,10 +49,6 @@ export default function MerchantDashboardPage() {
     }
   };
   
-  /**
-   * Handles deleting the job from the queue.
-   * In a full app, this should also delete the associated file from Firebase Storage.
-   */
   const handleDeleteJob = async (jobId) => {
       try {
         await deletePrintJob(jobId);
@@ -72,7 +65,6 @@ export default function MerchantDashboardPage() {
         Merchant Dashboard
       </Typography>
       <Box sx={{ display: 'grid', gridTemplateColumns: { md: '1fr 3fr' }, gap: 3 }}>
-        {/* This component will display the merchant's QR code and ID */}
         <MerchantProfile merchantId={merchantId} />
         
         <Box>
@@ -82,7 +74,6 @@ export default function MerchantDashboardPage() {
           
           {error && <Alert severity="error">{error}</Alert>}
           
-          {/* This component will receive the list of jobs and the functions to act on them */}
           <PrintQueue
             jobs={jobs}
             onCalculateCost={handleCalculateCost}

@@ -1,25 +1,34 @@
-// src/pages/LoginPage.jsx
+// src/pages/SignupPage.jsx
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Container, Paper, Typography, TextField, Button, Box, Link as MuiLink, Alert } from '@mui/material';
-import { signInMerchant } from '../firebase/auth'; // Import our auth function
+import { signUpMerchant } from '../firebase/auth'; // Import our auth function
 
-export default function LoginPage() {
+export default function SignupPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = async (event) => {
+  const handleSignup = async (event) => {
     event.preventDefault();
     setError(null);
     setLoading(true);
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
+      setLoading(false);
+      return;
+    }
+
     try {
-      await signInMerchant(email, password); // Call the simulated login
-      navigate('/merchant/dashboard'); // Redirect on success
+      await signUpMerchant(email, password); // Call the simulated signup
+      alert('Account created successfully! Please log in.'); // Use a more sophisticated notification in a real app
+      navigate('/merchant/login'); // Redirect to login after successful signup
     } catch (err) {
-      setError(err.message || 'Failed to log in.');
+      setError(err.message || 'Failed to sign up.');
     } finally {
       setLoading(false);
     }
@@ -29,9 +38,9 @@ export default function LoginPage() {
     <Container component="main" maxWidth="xs" sx={{ mt: 8 }}>
       <Paper elevation={3} sx={{ p: 4, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <Typography component="h1" variant="h5">
-          Merchant Login
+          Merchant Sign Up
         </Typography>
-        <Box component="form" onSubmit={handleLogin} noValidate sx={{ mt: 1 }}>
+        <Box component="form" onSubmit={handleSignup} noValidate sx={{ mt: 1 }}>
           <TextField
             margin="normal"
             required
@@ -52,9 +61,21 @@ export default function LoginPage() {
             label="Password"
             type="password"
             id="password"
-            autoComplete="current-password"
+            autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+          />
+          <TextField
+            margin="normal"
+            required
+            fullWidth
+            name="confirmPassword"
+            label="Confirm Password"
+            type="password"
+            id="confirmPassword"
+            autoComplete="new-password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
           />
           {error && <Alert severity="error" sx={{ mt: 2, width: '100%' }}>{error}</Alert>}
           <Button
@@ -64,16 +85,11 @@ export default function LoginPage() {
             sx={{ mt: 3, mb: 2 }}
             disabled={loading}
           >
-            {loading ? 'Logging in...' : 'Sign In'}
+            {loading ? 'Signing up...' : 'Sign Up'}
           </Button>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', mt: 1 }}>
-            <MuiLink component="button" variant="body2" onClick={() => navigate('/merchant/signup')}>
-              Don't have an account? Sign Up
-            </MuiLink>
-            <MuiLink component="button" variant="body2" onClick={() => navigate('/')}>
-              Scan QR (User)
-            </MuiLink>
-          </Box>
+          <MuiLink component="button" variant="body2" onClick={() => navigate('/merchant/login')}>
+            Already have an account? Log In
+          </MuiLink>
         </Box>
       </Paper>
     </Container>
