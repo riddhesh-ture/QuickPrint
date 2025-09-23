@@ -1,17 +1,21 @@
 import { initializeApp } from "firebase/app";
+import { getAuth } from "firebase/auth";
 
-// Your web app's Firebase configuration
+// Your web app's Firebase configuration using environment variables
 const firebaseConfig = {
-  apiKey: "AIzaSyBJrAsrM9uG-IASLrhWURMaz5d4gEF44dA",
-  authDomain: "quickprint-official.firebaseapp.com",
-  projectId: "quickprint-official",
-  storageBucket: "quickprint-official.firebasestorage.app",
-  messagingSenderId: "876471482977",
-  appId: "1:876471482977:web:f65d816bbd8c8ab5a88820",
-  measurementId: "G-VT7W8B76G3"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
+
+// Export the auth instance for use in other files
+export const auth = getAuth(app);
 
 export default app;
