@@ -1,8 +1,8 @@
 // src/pages/LoginPage.jsx
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Container, Paper, Typography, TextField, Button, Box, Link as MuiLink, Alert } from '@mui/material';
-import { signInMerchant } from '../firebase/auth'; // Import our auth function
+import { Container, Paper, Typography, TextField, Button, Box, Link as MuiLink, Alert, CircularProgress } from '@mui/material';
+import { signInMerchant } from '../firebase/auth';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -13,15 +13,17 @@ export default function LoginPage() {
 
   const handleLogin = async (event) => {
     event.preventDefault();
-    setError(null);
-    setLoading(true);
+    setError(null); // Clear previous errors
+    setLoading(true); // Start loading
+
     try {
       await signInMerchant(email, password); // Call the simulated login
       navigate('/merchant/dashboard'); // Redirect on success
     } catch (err) {
-      setError(err.message || 'Failed to log in.');
+      console.error("Login attempt failed:", err.message); // Log for debugging
+      setError(err.message || 'Failed to log in. Please check your credentials.');
     } finally {
-      setLoading(false);
+      setLoading(false); // End loading
     }
   };
 
@@ -31,7 +33,7 @@ export default function LoginPage() {
         <Typography component="h1" variant="h5">
           Merchant Login
         </Typography>
-        <Box component="form" onSubmit={handleLogin} noValidate sx={{ mt: 1 }}>
+        <Box component="form" onSubmit={handleLogin} noValidate sx={{ mt: 1, width: '100%' }}>
           <TextField
             margin="normal"
             required
@@ -43,6 +45,7 @@ export default function LoginPage() {
             autoFocus
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            disabled={loading}
           />
           <TextField
             margin="normal"
@@ -55,6 +58,7 @@ export default function LoginPage() {
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            disabled={loading}
           />
           {error && <Alert severity="error" sx={{ mt: 2, width: '100%' }}>{error}</Alert>}
           <Button
@@ -62,15 +66,15 @@ export default function LoginPage() {
             fullWidth
             variant="contained"
             sx={{ mt: 3, mb: 2 }}
-            disabled={loading}
+            disabled={loading} // Disable button when loading
           >
-            {loading ? 'Logging in...' : 'Sign In'}
+            {loading ? <CircularProgress size={24} color="inherit" /> : 'Sign In'}
           </Button>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', mt: 1 }}>
-            <MuiLink component="button" variant="body2" onClick={() => navigate('/merchant/signup')}>
+            <MuiLink component="button" variant="body2" onClick={() => navigate('/merchant/signup')} disabled={loading}>
               Don't have an account? Sign Up
             </MuiLink>
-            <MuiLink component="button" variant="body2" onClick={() => navigate('/')}>
+            <MuiLink component="button" variant="body2" onClick={() => navigate('/')} disabled={loading}>
               Scan QR (User)
             </MuiLink>
           </Box>

@@ -1,8 +1,8 @@
 // src/pages/SignupPage.jsx
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Container, Paper, Typography, TextField, Button, Box, Link as MuiLink, Alert } from '@mui/material';
-import { signUpMerchant } from '../firebase/auth'; // Import our auth function
+import { Container, Paper, Typography, TextField, Button, Box, Link as MuiLink, Alert, CircularProgress } from '@mui/material';
+import { signUpMerchant } from '../firebase/auth';
 
 export default function SignupPage() {
   const navigate = useNavigate();
@@ -28,7 +28,8 @@ export default function SignupPage() {
       alert('Account created successfully! Please log in.'); // Use a more sophisticated notification in a real app
       navigate('/merchant/login'); // Redirect to login after successful signup
     } catch (err) {
-      setError(err.message || 'Failed to sign up.');
+      console.error("Signup attempt failed:", err.message); // Log for debugging
+      setError(err.message || 'Failed to sign up. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -40,7 +41,7 @@ export default function SignupPage() {
         <Typography component="h1" variant="h5">
           Merchant Sign Up
         </Typography>
-        <Box component="form" onSubmit={handleSignup} noValidate sx={{ mt: 1 }}>
+        <Box component="form" onSubmit={handleSignup} noValidate sx={{ mt: 1, width: '100%' }}>
           <TextField
             margin="normal"
             required
@@ -52,6 +53,7 @@ export default function SignupPage() {
             autoFocus
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            disabled={loading}
           />
           <TextField
             margin="normal"
@@ -64,6 +66,7 @@ export default function SignupPage() {
             autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            disabled={loading}
           />
           <TextField
             margin="normal"
@@ -76,6 +79,7 @@ export default function SignupPage() {
             autoComplete="new-password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
+            disabled={loading}
           />
           {error && <Alert severity="error" sx={{ mt: 2, width: '100%' }}>{error}</Alert>}
           <Button
@@ -85,9 +89,9 @@ export default function SignupPage() {
             sx={{ mt: 3, mb: 2 }}
             disabled={loading}
           >
-            {loading ? 'Signing up...' : 'Sign Up'}
+            {loading ? <CircularProgress size={24} color="inherit" /> : 'Sign Up'}
           </Button>
-          <MuiLink component="button" variant="body2" onClick={() => navigate('/merchant/login')}>
+          <MuiLink component="button" variant="body2" onClick={() => navigate('/merchant/login')} disabled={loading}>
             Already have an account? Log In
           </MuiLink>
         </Box>
