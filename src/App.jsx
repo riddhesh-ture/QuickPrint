@@ -1,7 +1,8 @@
 // src/App.jsx
 import React from 'react';
-import { Routes, Route, Navigate, Outlet, useNavigate } from 'react-router-dom'; // <--- ADDED useNavigate HERE
-import { useAuth, signOutMerchant } from './firebase/auth';
+import { Routes, Route, Navigate, Outlet, useNavigate } from 'react-router-dom';
+import { useAuth } from './hooks/useAuth'; // Corrected import for useAuth
+import { signOutMerchant } from './firebase/auth'; // Corrected import for signOutMerchant
 
 // Import all your page components
 import HomePage from './pages/HomePage'; // User scan page
