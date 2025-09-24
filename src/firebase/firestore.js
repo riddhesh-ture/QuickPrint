@@ -1,8 +1,6 @@
 // src/firebase/firestore.js
-import app from './config.js';
+import { db } from './config.js';
 import { getFirestore, collection, addDoc, serverTimestamp, doc, updateDoc, deleteDoc } from 'firebase/firestore';
-
-const db = getFirestore(app);
 
 /**
  * Creates a new print job document in Firestore.
