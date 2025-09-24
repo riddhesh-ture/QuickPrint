@@ -1,8 +1,9 @@
+// src/components/MerchantView/PrintQueue.jsx
 import React from 'react';
 import { Box, Typography, Paper, List, CircularProgress, Divider } from '@mui/material';
-import JobItem from './JobItem'; // Import the new component
+import JobItem from './JobItem';
 
-export default function PrintQueue({ jobs }) {
+export default function PrintQueue({ jobs, onCalculateCost, onCompleteJob, onDeleteJob }) {
   if (!jobs) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
@@ -22,11 +23,14 @@ export default function PrintQueue({ jobs }) {
   return (
     <Paper elevation={2}>
       <List sx={{ p: 0 }}>
-        {jobs.map((job, index) => (
-          <React.Fragment key={job.id}>
-            <JobItem job={job} />
-            {index < jobs.length - 1 && <Divider />}
-          </React.Fragment>
+        {jobs.map((job) => (
+          <JobItem
+            key={job.id}
+            job={job}
+            onCalculateCost={onCalculateCost}
+            onCompleteJob={onCompleteJob}
+            onDeleteJob={onDeleteJob}
+          />
         ))}
       </List>
     </Paper>

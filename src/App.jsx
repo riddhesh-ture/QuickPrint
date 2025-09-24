@@ -1,32 +1,36 @@
 // src/App.jsx
 import React from 'react';
 import { Routes, Route, Navigate, Outlet, useNavigate } from 'react-router-dom';
-import { useAuth } from './hooks/useAuth'; // Corrected import for useAuth
-import { signOutMerchant } from './firebase/auth'; // Corrected import for signOutMerchant
+import { useAuth } from './hooks/useAuth';
+import { signOutMerchant } from './firebase/auth';
 
 // Import all your page components
-import HomePage from './pages/HomePage'; // User scan page
+import HomePage from './pages/HomePage';
 import UserPrintPage from './pages/UserPrintPage';
-import LoginPage from './pages/LoginPage'; // Merchant login
-import SignupPage from './pages/SignupPage'; // Merchant signup
+import LoginPage from './pages/LoginPage';
+import SignupPage from './pages/SignupPage';
 import MerchantDashboardPage from './pages/MerchantDashboardPage';
-import { AppBar, Toolbar, Typography, Button, Box } from '@mui/material';
+import { AppBar, Toolbar, Typography, Button } from '@mui/material';
 
 // A component to protect merchant routes
 const ProtectedRoute = () => {
-  const { isAuthenticated, merchantId } = useAuth(); // Use the auth hook
+  const { user, loading } = useAuth(); // Use user and loading state
 
-  if (!isAuthenticated) {
+  if (loading) {
+    return <div>Loading...</div>; // Or a spinner component
+  }
+
+  if (!user) {
     return <Navigate to="/merchant/login" replace />;
   }
 
-  // Pass merchantId as context or prop if needed by child routes
-  return <Outlet context={{ merchantId }} />;
+  // Pass merchantId as context
+  return <Outlet context={{ merchantId: user.uid }} />;
 };
 
 const Layout = () => {
-  const { isAuthenticated } = useAuth();
-  const navigate = useNavigate(); // <-- This is now correctly defined
+  const { user } = useAuth();
+  const navigate = useNavigate();
 
   const handleLogout = async () => {
     await signOutMerchant();
@@ -40,30 +44,28 @@ const Layout = () => {
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
             QuickPrint
           </Typography>
-          {isAuthenticated && (
+          {user ? (
             <Button color="inherit" onClick={handleLogout}>
               Logout
             </Button>
-          )}
-          {!isAuthenticated && (
+          ) : (
             <Button color="inherit" onClick={() => navigate('/merchant/login')}>
               Merchant Area
             </Button>
           )}
         </Toolbar>
       </AppBar>
-      <Outlet /> {/* Renders the current route's component */}
+      <Outlet />
     </>
   );
 };
-
 
 export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Layout />}>
         {/* --- Public User Routes --- */}
-        <Route index element={<HomePage />} /> {/* User QR Scan page */}
+        <Route index element={<HomePage />} />
         <Route path="/print" element={<UserPrintPage />} />
 
         {/* --- Merchant Authentication Routes --- */}
@@ -73,7 +75,6 @@ export default function App() {
         {/* --- Protected Merchant Routes --- */}
         <Route path="/merchant" element={<ProtectedRoute />}>
           <Route path="dashboard" element={<MerchantDashboardPage />} />
-          {/* Add other protected merchant routes here */}
         </Route>
 
         {/* --- Fallback Route --- */}

@@ -66,7 +66,6 @@ export default function JobItem({ job, onCalculateCost, onCompleteJob, onDeleteJ
           primary={<Typography variant="subtitle1">Job ID: {job.id}</Typography>}
           secondary={`Received: ${new Date(job.createdAt?.seconds * 1000).toLocaleString()}`}
         />
-        
         <Box sx={{ my: 1, pl: 2 }}>
           {job.files.map((file, index) => (
             <Typography key={index} variant="body2">
@@ -74,17 +73,16 @@ export default function JobItem({ job, onCalculateCost, onCompleteJob, onDeleteJ
             </Typography>
           ))}
         </Box>
-
         <Box sx={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center' }}>
-            {renderActions()}
-            <Button
-                variant="outlined"
-                color="error"
-                size="small"
-                onClick={() => onDeleteJob(job.id)} // Calls the prop function
-            >
-                Delete
-            </Button>
+          {renderActions()}
+          <Button
+            variant="outlined"
+            color="error"
+            size="small"
+            onClick={() => onDeleteJob(job.id)} // Calls the prop function
+          >
+            Delete
+          </Button>
         </Box>
       </ListItem>
       <Divider />
