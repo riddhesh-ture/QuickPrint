@@ -1,19 +1,36 @@
 // src/pages/UserPrintPage.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Container, Typography, Button, Box, Paper, List, CircularProgress, Alert } from '@mui/material';
+import { Container, Typography, Button, Box, Paper, List, CircularProgress, Alert, TextField, LinearProgress } from '@mui/material';
 import FileUploader from '../components/UserView/FileUploader';
 import UploadedFileItem from '../components/UserView/UploadedFileItem';
-import { createPrintJob } from '../firebase/firestore';
-import { useAuth } from '../hooks/useAuth'; // Import useAuth to get the user's ID
+import { createPrintJob, updatePrintJob } from '../firebase/firestore';
+import { useDocument } from '../hooks/useFirestore';
+
+// A simple WebRTC hook placeholder (in a real app, move this to its own file)
+const useWebRTC = (jobId) => {
+  const [peerConnection, setPeerConnection] = useState(null);
+  const [dataChannel, setDataChannel] = useState(null);
+  const [transferStatus, setTransferStatus] = useState('idle'); // idle, connecting, connected, transferring, complete, failed
+
+  // Add more WebRTC logic here: creating offers/answers, handling ICE candidates, sending files.
+  // This is a complex part that would be built out further.
+
+  return { transferStatus };
+};
 
 export default function UserPrintPage() {
   const [searchParams] = useSearchParams();
   const merchantId = searchParams.get('merchantId');
+  
   const [files, setFiles] = useState([]);
+  const [userName, setUserName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [jobId, setJobId] = useState(null);
-  const { user } = useAuth(); // Get the current user from auth context
+
+  // Real-time listener for the job document
+  const { document: jobData, error: jobError } = useDocument('printJobs', jobId);
+  const { transferStatus } = useWebRTC(jobId); // Basic WebRTC hook integration
 
   const handleFilesAdded = (newFiles) => {
     const newFileEntries = newFiles.map(file => ({
@@ -32,33 +49,28 @@ export default function UserPrintPage() {
     setFiles(prev => prev.filter(f => f.id !== fileId));
   };
 
-  // This function now ONLY sends metadata to Firestore.
   const handleProceed = async () => {
-    if (!merchantId || !user || files.length === 0) {
-      alert('Merchant ID is missing, you are not logged in, or no files are selected.');
+    if (!merchantId || files.length === 0 || !userName.trim()) {
+      alert('Merchant ID is missing, no files are selected, or your name is empty.');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      // Prepare the file metadata for the Firestore document.
       const filesForJob = files.map(fileEntry => ({
         name: fileEntry.file.name,
         size: fileEntry.file.size,
         specs: fileEntry.specs,
       }));
 
-      // Create the print job document in Firestore.
       const newJobRef = await createPrintJob({
         merchantId: merchantId,
-        userId: user.uid, // Add the user's ID to the job for security rules
+        userName: userName.trim(), // Save the anonymous user's name
         files: filesForJob,
-        status: 'pending', // Initial status for the merchant to see
+        status: 'pending',
       });
 
       setJobId(newJobRef.id);
-      // The actual file data remains in this component's state, ready for WebRTC.
-
     } catch (error) {
       console.error('Error creating print job request:', error);
       alert('There was an error sending your print job request. Please try again.');
@@ -66,22 +78,52 @@ export default function UserPrintPage() {
       setIsSubmitting(false);
     }
   };
-  
-  // A placeholder UI to show after the job request is sent.
-  const renderWaitingStatus = () => {
-    return (
-      <Paper sx={{ p: 3, textAlign: 'center' }}>
-        <CircularProgress sx={{ mb: 2 }} />
-        <Typography variant="h6">Your request has been sent!</Typography>
-        <Typography color="text.secondary">Waiting for the merchant to accept and start the file transfer...</Typography>
-      </Paper>
-    );
+
+  // Mock payment handler
+  const handlePayment = async () => {
+    if (!jobId) return;
+    alert('This would open a UPI payment app. Simulating successful payment.');
+    await updatePrintJob(jobId, { status: 'paid' });
+  };
+
+  const renderJobStatus = () => {
+    if (jobError) return <Alert severity="error">{jobError}</Alert>;
+    if (!jobData) return <CircularProgress />;
+
+    switch (jobData.status) {
+      case 'pending':
+        return <Alert severity="info">Request sent! Waiting for the merchant to accept the job...</Alert>;
+      case 'transferring':
+        // In a real implementation, the WebRTC hook would provide progress.
+        return (
+          <Box>
+            <Alert severity="info">Merchant has accepted! Transferring file securely via P2P...</Alert>
+            <LinearProgress variant="indeterminate" sx={{mt: 2}} />
+          </Box>
+        );
+      case 'awaitingPayment':
+        return (
+          <Paper sx={{ p: 3, textAlign: 'center' }}>
+            <Typography variant="h6">Payment Required</Typography>
+            <Typography variant="h4" sx={{ my: 2 }}>
+              Total Cost: ₹{jobData.cost.toFixed(2)}
+            </Typography>
+            <Button variant="contained" onClick={handlePayment}>Pay Now</Button>
+          </Paper>
+        );
+      case 'paid':
+        return <Alert severity="success">Payment successful! Your document is being printed.</Alert>;
+      case 'completed':
+        return <Alert severity="success">Print Job Complete! Thank you.</Alert>;
+      default:
+        return <CircularProgress />;
+    }
   };
 
   return (
     <Container maxWidth="md" sx={{ mt: 4 }}>
       <Typography variant="h4" component="h1" gutterBottom>
-        Upload Your Files
+        Send a File to Print
       </Typography>
       <Typography variant="subtitle1" color="text.secondary" sx={{ mb: 2 }}>
         Sending to Merchant ID: {merchantId || 'N/A'}
@@ -89,6 +131,16 @@ export default function UserPrintPage() {
 
       {!jobId ? (
         <>
+          <Paper elevation={2} sx={{ p: 2, mb: 2 }}>
+            <TextField
+              label="Your Name or ID"
+              variant="outlined"
+              fullWidth
+              value={userName}
+              onChange={(e) => setUserName(e.target.value)}
+              helperText="This is how the merchant will identify your job."
+            />
+          </Paper>
           <Paper elevation={2} sx={{ p: 2, mb: 4 }}>
             <FileUploader onFilesAdded={handleFilesAdded} />
           </Paper>
@@ -106,7 +158,7 @@ export default function UserPrintPage() {
                 ))}
               </List>
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3 }}>
-                <Button variant="contained" size="large" onClick={handleProceed} disabled={isSubmitting}>
+                <Button variant="contained" size="large" onClick={handleProceed} disabled={isSubmitting || !userName.trim()}>
                   {isSubmitting ? <CircularProgress size={24} /> : 'Send Request to Merchant'}
                 </Button>
               </Box>
@@ -114,7 +166,7 @@ export default function UserPrintPage() {
           )}
         </>
       ) : (
-        renderWaitingStatus()
+        renderJobStatus()
       )}
     </Container>
   );

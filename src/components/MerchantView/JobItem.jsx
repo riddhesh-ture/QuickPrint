@@ -1,59 +1,52 @@
 // src/components/MerchantView/JobItem.jsx
-import React, { useState } from 'react';
+import React from 'react';
 import {
   ListItem,
   ListItemText,
   Typography,
   Box,
   Button,
-  TextField,
   Divider,
-  Chip
+  Chip,
+  LinearProgress
 } from '@mui/material';
 
-// This component receives functions as props. It does NOT call Firestore directly.
-export default function JobItem({ job, onCalculateCost, onCompleteJob, onDeleteJob }) {
-  const [cost, setCost] = useState('');
+export default function JobItem({ job, onAcceptJob, onCompleteJob, onDeleteJob }) {
 
   const renderActions = () => {
     switch (job.status) {
       case 'pending':
         return (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
-            <TextField
-              label="Cost ($)"
-              size="small"
-              variant="outlined"
-              value={cost}
-              onChange={(e) => setCost(e.target.value)}
-              sx={{ width: '100px' }}
-            />
-            {/* This calls the function passed in via props */}
-            <Button
-              variant="contained"
-              size="small"
-              onClick={() => onCalculateCost(job.id, cost)}
-            >
-              Set Cost
-            </Button>
-          </Box>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={() => onAcceptJob(job)}
+          >
+            Accept & Start Transfer
+          </Button>
+        );
+      case 'transferring':
+        return (
+           <Box sx={{ width: '100%', maxWidth: '200px' }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>Receiving File...</Typography>
+                <LinearProgress />
+           </Box>
         );
       case 'awaitingPayment':
-        return <Chip label="Waiting for payment" color="warning" size="small" sx={{ mt: 1 }} />;
+        return <Chip label={`Awaiting Payment: ₹${job.cost.toFixed(2)}`} color="warning" size="small" />;
       case 'paid':
         return (
           <Button
             variant="contained"
             color="success"
             size="small"
-            onClick={() => onCompleteJob(job.id)} // Calls the prop function
-            sx={{ mt: 1 }}
+            onClick={() => onCompleteJob(job.id)}
           >
-            Mark as Complete
+            Mark as Printed & Complete
           </Button>
         );
       case 'completed':
-        return <Chip label="Completed" color="success" size="small" sx={{ mt: 1 }} />;
+        return <Chip label="Completed" color="success" size="small" />;
       default:
         return null;
     }
@@ -63,7 +56,7 @@ export default function JobItem({ job, onCalculateCost, onCompleteJob, onDeleteJ
     <>
       <ListItem alignItems="flex-start" sx={{ flexDirection: 'column' }}>
         <ListItemText
-          primary={<Typography variant="subtitle1">Job ID: {job.id}</Typography>}
+          primary={<Typography variant="subtitle1">User: {job.userName}</Typography>}
           secondary={`Received: ${new Date(job.createdAt?.seconds * 1000).toLocaleString()}`}
         />
         <Box sx={{ my: 1, pl: 2 }}>
@@ -73,13 +66,13 @@ export default function JobItem({ job, onCalculateCost, onCompleteJob, onDeleteJ
             </Typography>
           ))}
         </Box>
-        <Box sx={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Box sx={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
           {renderActions()}
           <Button
             variant="outlined"
             color="error"
             size="small"
-            onClick={() => onDeleteJob(job.id)} // Calls the prop function
+            onClick={() => onDeleteJob(job.id)}
           >
             Delete
           </Button>

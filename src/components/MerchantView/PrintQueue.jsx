@@ -1,9 +1,9 @@
 // src/components/MerchantView/PrintQueue.jsx
 import React from 'react';
-import { Box, Typography, Paper, List, CircularProgress, Divider } from '@mui/material';
+import { Box, Typography, Paper, List, CircularProgress } from '@mui/material';
 import JobItem from './JobItem';
 
-export default function PrintQueue({ jobs, onCalculateCost, onCompleteJob, onDeleteJob }) {
+export default function PrintQueue({ jobs, onAcceptJob, onCompleteJob, onDeleteJob }) {
   if (!jobs) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
@@ -27,7 +27,7 @@ export default function PrintQueue({ jobs, onCalculateCost, onCompleteJob, onDel
           <JobItem
             key={job.id}
             job={job}
-            onCalculateCost={onCalculateCost}
+            onAcceptJob={onAcceptJob}
             onCompleteJob={onCompleteJob}
             onDeleteJob={onDeleteJob}
           />
