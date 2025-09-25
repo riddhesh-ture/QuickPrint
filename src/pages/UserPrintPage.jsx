@@ -1,23 +1,11 @@
 // src/pages/UserPrintPage.jsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Container, Typography, Button, Box, Paper, List, CircularProgress, Alert, TextField, LinearProgress } from '@mui/material';
 import FileUploader from '../components/UserView/FileUploader';
 import UploadedFileItem from '../components/UserView/UploadedFileItem';
 import { createPrintJob, updatePrintJob } from '../firebase/firestore';
 import { useDocument } from '../hooks/useFirestore';
-
-// A simple WebRTC hook placeholder (in a real app, move this to its own file)
-const useWebRTC = (jobId) => {
-  const [peerConnection, setPeerConnection] = useState(null);
-  const [dataChannel, setDataChannel] = useState(null);
-  const [transferStatus, setTransferStatus] = useState('idle'); // idle, connecting, connected, transferring, complete, failed
-
-  // Add more WebRTC logic here: creating offers/answers, handling ICE candidates, sending files.
-  // This is a complex part that would be built out further.
-
-  return { transferStatus };
-};
 
 export default function UserPrintPage() {
   const [searchParams] = useSearchParams();
@@ -30,7 +18,6 @@ export default function UserPrintPage() {
 
   // Real-time listener for the job document
   const { document: jobData, error: jobError } = useDocument('printJobs', jobId);
-  const { transferStatus } = useWebRTC(jobId); // Basic WebRTC hook integration
 
   const handleFilesAdded = (newFiles) => {
     const newFileEntries = newFiles.map(file => ({
@@ -63,9 +50,10 @@ export default function UserPrintPage() {
         specs: fileEntry.specs,
       }));
 
+      // No longer need userId, as the user is anonymous
       const newJobRef = await createPrintJob({
         merchantId: merchantId,
-        userName: userName.trim(), // Save the anonymous user's name
+        userName: userName.trim(),
         files: filesForJob,
         status: 'pending',
       });
@@ -94,7 +82,6 @@ export default function UserPrintPage() {
       case 'pending':
         return <Alert severity="info">Request sent! Waiting for the merchant to accept the job...</Alert>;
       case 'transferring':
-        // In a real implementation, the WebRTC hook would provide progress.
         return (
           <Box>
             <Alert severity="info">Merchant has accepted! Transferring file securely via P2P...</Alert>
