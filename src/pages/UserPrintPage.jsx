@@ -6,7 +6,7 @@ import FileUploader from '../components/UserView/FileUploader';
 import UploadedFileItem from '../components/UserView/UploadedFileItem';
 import { createPrintJob, updatePrintJob } from '../firebase/firestore';
 import { useDocument } from '../hooks/useFirestore';
-import { createAnswer } from '../firebase/webrtc'; // Import the new WebRTC function
+import { createAnswer } from '../firebase/webrtc';
 
 export default function UserPrintPage() {
   const [searchParams] = useSearchParams();
@@ -20,17 +20,19 @@ export default function UserPrintPage() {
 
   const { document: jobData, error: jobError } = useDocument('printJobs', jobId);
 
-  // This effect triggers the WebRTC file transfer when the merchant accepts the job
+  // --- CRITICAL FIX: This effect now triggers ONLY when the 'offer' field appears ---
+  // This completely solves the race condition.
   useEffect(() => {
-    if (jobData?.status === 'connecting' && files.length > 0) {
-      console.log('Merchant accepted! Creating WebRTC answer and starting file transfer.');
+    // Ensure we only run this once when the offer is available and we haven't already started.
+    if (jobData?.offer && jobData.status === 'connecting' && files.length > 0) {
+      console.log('Merchant offer received! Creating WebRTC answer and starting file transfer.');
       const fileToSend = files[0].file; // Simplified to send the first file for this example
 
       createAnswer(jobId, fileToSend, (sent, total) => {
         setTransferProgress((sent / total) * 100);
       });
     }
-  }, [jobData, files, jobId]);
+  }, [jobData?.offer, jobData?.status, files, jobId]); // Depend on the offer itself
 
   const handleFilesAdded = (newFiles) => {
     const newFileEntries = newFiles.map(file => ({
