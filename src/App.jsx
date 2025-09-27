@@ -2,30 +2,28 @@
 import React from 'react';
 import { Routes, Route, Navigate, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
-import { signOutMerchant } from './firebase/auth';
-
-// Import all your page components
+import { signOutUser } from './firebase/auth'; // Using a general sign out
 import HomePage from './pages/HomePage';
 import UserPrintPage from './pages/UserPrintPage';
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import MerchantDashboardPage from './pages/MerchantDashboardPage';
-import { AppBar, Toolbar, Typography, Button } from '@mui/material';
+import { AppBar, Toolbar, Typography, Button, Box } from '@mui/material';
 
-// A component to protect merchant routes
-const ProtectedRoute = () => {
-  const { user, loading } = useAuth(); // Use user and loading state
-
-  if (loading) {
-    return <div>Loading...</div>; // Or a spinner component
-  }
-
-  if (!user) {
-    return <Navigate to="/merchant/login" replace />;
-  }
-
-  // Pass merchantId as context
+// Protected route for MERCHANTS
+const MerchantProtectedRoute = () => {
+  const { user, loading } = useAuth();
+  if (loading) return <div>Loading...</div>;
+  if (!user) return <Navigate to="/merchant/login" replace />;
   return <Outlet context={{ merchantId: user.uid }} />;
+};
+
+// Protected route for USERS
+const UserProtectedRoute = () => {
+  const { user, loading } = useAuth();
+  if (loading) return <div>Loading...</div>;
+  if (!user) return <Navigate to="/" replace />; // Redirect to HomePage to log in
+  return <Outlet context={{ userId: user.uid }} />;
 };
 
 const Layout = () => {
@@ -33,15 +31,15 @@ const Layout = () => {
   const navigate = useNavigate();
 
   const handleLogout = async () => {
-    await signOutMerchant();
-    navigate('/merchant/login');
+    await signOutUser();
+    navigate('/');
   };
 
   return (
     <>
       <AppBar position="static">
         <Toolbar>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }} onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>
             QuickPrint
           </Typography>
           {user ? (
@@ -49,9 +47,14 @@ const Layout = () => {
               Logout
             </Button>
           ) : (
-            <Button color="inherit" onClick={() => navigate('/merchant/login')}>
-              Merchant Area
-            </Button>
+            <Box>
+              <Button color="inherit" onClick={() => navigate('/')}>
+                User Area
+              </Button>
+              <Button color="inherit" onClick={() => navigate('/merchant/login')}>
+                Merchant Area
+              </Button>
+            </Box>
           )}
         </Toolbar>
       </AppBar>
@@ -64,16 +67,18 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Layout />}>
-        {/* --- Public User Routes --- */}
+        {/* --- Public Routes --- */}
         <Route index element={<HomePage />} />
-        <Route path="/print" element={<UserPrintPage />} />
-
-        {/* --- Merchant Authentication Routes --- */}
         <Route path="/merchant/login" element={<LoginPage />} />
         <Route path="/merchant/signup" element={<SignupPage />} />
 
-        {/* --- Protected Merchant Routes --- */}
-        <Route path="/merchant" element={<ProtectedRoute />}>
+        {/* --- Protected User Route --- */}
+        <Route element={<UserProtectedRoute />}>
+          <Route path="/print" element={<UserPrintPage />} />
+        </Route>
+        
+        {/* --- Protected Merchant Route --- */}
+        <Route path="/merchant" element={<MerchantProtectedRoute />}>
           <Route path="dashboard" element={<MerchantDashboardPage />} />
         </Route>
 

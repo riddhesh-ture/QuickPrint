@@ -1,104 +1,108 @@
-import React, { useEffect, useState, useRef } from 'react';
+// src/pages/HomePage.jsx
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, Container, Typography, Button, Paper, List, ListItem, ListItemText, ListItemIcon, Divider } from '@mui/material';
-import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
-import HistoryIcon from '@mui/icons-material/History';
-import StorefrontIcon from '@mui/icons-material/Storefront';
+import { Box, Container, Typography, Button, Paper, TextField, Alert, CircularProgress, Link as MuiLink } from '@mui/material';
 import { Html5QrcodeScanner } from 'html5-qrcode';
-
-// This is mock data. Later, you can fetch this from local storage or your database.
-const recentShops = [
-  { id: 1, name: 'ABC Print Hub', location: 'Main Street' },
-  { id: 2, name: 'Quick Prints & Co.', location: 'Downtown' },
-  { id: 3, name: 'The Copy Corner', location: 'College Ave' },
-];
+import { useAuth } from '../hooks/useAuth';
+import { signInUser, signUpUser } from '../firebase/auth';
 
 export default function HomePage() {
   const navigate = useNavigate();
+  const { user, loading } = useAuth();
   const scannerRef = useRef(null);
+  const [showLogin, setShowLogin] = useState(true);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
+  // Function to initialize and render the scanner
+  const startScanner = () => {
+    if (scannerRef.current) return; // Prevent re-initialization
+    const scanner = new Html5QrcodeScanner(
+      'reader',
+      { qrbox: { width: 250, height: 250 }, fps: 5 },
+      false
+    );
+
+    const onScanSuccess = (decodedText) => {
+      scanner.clear().catch(err => console.error("Scanner clear failed", err));
+      scannerRef.current = null;
+      navigate(decodedText); // decodedText is the full URL from the QR code
+    };
+    scanner.render(onScanSuccess, () => {});
+    scannerRef.current = scanner;
+  };
+
+  // When the user is logged in, show the scanner
   useEffect(() => {
-    // Ensure the scanner is only initialized once
-    if (!scannerRef.current) {
-      const scanner = new Html5QrcodeScanner(
-        'reader', // ID of the element to render the scanner in
-        {
-          qrbox: {
-            width: 250,
-            height: 250,
-          },
-          fps: 5, // Scans per second
-        },
-        false // verbose
-      );
-
-      const onScanSuccess = (decodedText, decodedResult) => {
-        // Stop scanning after a successful scan
-        scanner.clear().catch(error => {
-          console.error("Failed to clear html5-qrcode-scanner on success.", error);
-        });
-        console.log(`Scanned merchant ID: ${decodedText}`);
-        navigate(`/print?merchantId=${decodedText}`);
-      };
-
-      const onScanFailure = (error) => {
-        // This callback is called frequently, it's best to ignore it.
-      };
-
-      scanner.render(onScanSuccess, onScanFailure);
-      scannerRef.current = scanner;
+    if (user && !loading) {
+      startScanner();
     }
-
-    // Cleanup function to stop the scanner when the component unmounts
+    // Cleanup scanner when component unmounts or user logs out
     return () => {
       if (scannerRef.current) {
-        scannerRef.current.clear().catch(error => {
-          console.error("Failed to clear html5-qrcode-scanner on cleanup.", error);
-        });
+        scannerRef.current.clear().catch(err => console.error("Scanner clear failed on cleanup", err));
         scannerRef.current = null;
       }
     };
-  }, [navigate]);
+  }, [user, loading]);
+
+  const handleAuthAction = async (event) => {
+    event.preventDefault();
+    setError(null);
+    setIsProcessing(true);
+    try {
+      if (showLogin) {
+        await signInUser(email, password);
+      } else {
+        await signUpUser(email, password);
+        alert('Sign up successful! You are now logged in.');
+      }
+      // On success, the useAuth hook will update, and the useEffect will show the scanner
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  if (loading) {
+    return <Container sx={{mt: 4, textAlign: 'center'}}><CircularProgress /></Container>;
+  }
 
   return (
     <Container maxWidth="sm" sx={{ mt: 4, textAlign: 'center' }}>
-      {/* QR Code Scanner Section */}
-      <Paper elevation={3} sx={{ p: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 4 }}>
-        <Typography variant="h5" component="h1" gutterBottom>
-          Ready to Print?
-        </Typography>
-        <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-          Scan a merchant's QR code to begin.
-        </Typography>
-        {/* The QR Scanner will be rendered inside this div */}
-        <Box id="reader" width="100%" />
-      </Paper>
-
-      {/* Recent Shops History Section */}
-      <Box>
-        <Typography variant="h6" component="h2" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 2 }}>
-          <HistoryIcon sx={{ mr: 1 }} /> Recent Shops
-        </Typography>
-        <Paper elevation={2}>
-          <List>
-            {recentShops.map((shop, index) => (
-              <React.Fragment key={shop.id}>
-                <ListItem
-                  button
-                  onClick={() => navigate(`/print?merchantId=${shop.id}`)}
-                  sx={{ cursor: 'pointer' }}
-                >
-                  <ListItemIcon>
-                    <StorefrontIcon />
-                  </ListItemIcon>
-                  <ListItemText primary={shop.name} secondary={shop.location} />
-                </ListItem>
-                {index < recentShops.length - 1 && <Divider />}
-              </React.Fragment>
-            ))}
-          </List>
+      {user ? (
+        // LOGGED-IN VIEW
+        <Paper elevation={3} sx={{ p: 3 }}>
+          <Typography variant="h5" component="h1" gutterBottom>
+            Ready to Print?
+          </Typography>
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+            Scan a merchant's QR code to begin.
+          </Typography>
+          <Box id="reader" width="100%" />
         </Paper>
-      </Box>
+      ) : (
+        // LOGGED-OUT VIEW
+        <Paper elevation={3} sx={{ p: 4 }}>
+          <Typography component="h1" variant="h5">
+            {showLogin ? 'User Login' : 'User Sign Up'}
+          </Typography>
+          <Box component="form" onSubmit={handleAuthAction} noValidate sx={{ mt: 1 }}>
+            <TextField margin="normal" required fullWidth id="email" label="Email Address" name="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <TextField margin="normal" required fullWidth name="password" label="Password" type="password" id="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
+            <Button type="submit" fullWidth variant="contained" sx={{ mt: 3, mb: 2 }} disabled={isProcessing}>
+              {isProcessing ? <CircularProgress size={24} /> : (showLogin ? 'Login' : 'Sign Up')}
+            </Button>
+            <MuiLink component="button" variant="body2" onClick={() => setShowLogin(!showLogin)}>
+              {showLogin ? "Don't have an account? Sign Up" : "Already have an account? Login"}
+            </MuiLink>
+          </Box>
+        </Paper>
+      )}
     </Container>
   );
 }

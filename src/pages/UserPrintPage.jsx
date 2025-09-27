@@ -1,44 +1,36 @@
 // src/pages/UserPrintPage.jsx
-import React from 'react';
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Container, Typography, Button, Box, Paper, List, CircularProgress, Alert, TextField, LinearProgress } from '@mui/material';
+import { Container, Typography, Button, Box, Paper, List, CircularProgress, Alert, LinearProgress } from '@mui/material';
 import FileUploader from '../components/UserView/FileUploader';
 import UploadedFileItem from '../components/UserView/UploadedFileItem';
 import { createPrintJob, updatePrintJob } from '../firebase/firestore';
 import { useDocument } from '../hooks/useFirestore';
 import { createAnswer } from '../firebase/webrtc';
+import { useAuth } from '../hooks/useAuth'; // Get the authenticated user
 
 export default function UserPrintPage() {
   const [searchParams] = useSearchParams();
   const merchantId = searchParams.get('merchantId');
   
   const [files, setFiles] = useState([]);
-  const [userName, setUserName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [jobId, setJobId] = useState(null);
   const [transferProgress, setTransferProgress] = useState(0);
-  
-  // --- CRITICAL FIX: State to prevent infinite loop ---
   const [webRTCStarted, setWebRTCStarted] = useState(false);
 
+  const { user } = useAuth(); // Get the user from our context
   const { document: jobData, error: jobError } = useDocument('printJobs', jobId);
 
-  // This effect now triggers the WebRTC file transfer reliably and ONLY ONCE.
   useEffect(() => {
-    // Check all conditions: offer exists, status is correct, we have files, AND we haven't started yet.
     if (jobData?.offer && jobData.status === 'connecting' && files.length > 0 && !webRTCStarted) {
-      // Set the lock immediately to prevent re-runs
-      setWebRTCStarted(true); 
-      
-      console.log('Merchant offer received! Creating WebRTC answer and starting file transfer.');
-      const fileToSend = files[0].file; // Simplified to send the first file for this example
-
+      setWebRTCStarted(true);
+      const fileToSend = files[0].file;
       createAnswer(jobId, fileToSend, (sent, total) => {
         setTransferProgress((sent / total) * 100);
       });
     }
-  }, [jobData, files, jobId, webRTCStarted]); // Add the new state to the dependency array
+  }, [jobData, files, jobId, webRTCStarted]);
 
   const handleFilesAdded = (newFiles) => {
     const newFileEntries = newFiles.map(file => ({
@@ -58,8 +50,8 @@ export default function UserPrintPage() {
   };
 
   const handleProceed = async () => {
-    if (!merchantId || files.length === 0 || !userName.trim()) {
-      alert('Merchant ID is missing, no files are selected, or your name is empty.');
+    if (!merchantId || files.length === 0 || !user) {
+      alert('Error: Missing merchant ID, files, or user authentication.');
       return;
     }
 
@@ -73,14 +65,15 @@ export default function UserPrintPage() {
 
       const newJobRef = await createPrintJob({
         merchantId: merchantId,
-        userName: userName.trim(),
+        userId: user.uid, // Use the authenticated user's ID
+        userName: user.email, // Use email as the display name
         files: filesForJob,
         status: 'pending',
       });
       setJobId(newJobRef.id);
     } catch (error) {
       console.error('Error creating print job request:', error);
-      alert('There was an error sending your print job request. Please try again.');
+      alert('There was an error sending your print job request.');
     } finally {
       setIsSubmitting(false);
     }
@@ -98,7 +91,7 @@ export default function UserPrintPage() {
 
     switch (jobData.status) {
       case 'pending':
-        return <Alert severity="info">Request sent! Waiting for the merchant to accept...</Alert>;
+        return <Alert severity="info">Request sent! Waiting for merchant to accept...</Alert>;
       case 'connecting':
         return <Alert severity="info">Merchant accepted! Establishing secure connection...</Alert>;
       case 'transferring':
@@ -113,9 +106,7 @@ export default function UserPrintPage() {
         return (
           <Paper sx={{ p: 3, textAlign: 'center' }}>
             <Typography variant="h6">Payment Required</Typography>
-            <Typography variant="h4" sx={{ my: 2 }}>
-              Total Cost: ₹{jobData.cost.toFixed(2)}
-            </Typography>
+            <Typography variant="h4" sx={{ my: 2 }}>Total Cost: ₹{jobData.cost.toFixed(2)}</Typography>
             <Button variant="contained" onClick={handlePayment}>Pay Now</Button>
           </Paper>
         );
@@ -139,16 +130,6 @@ export default function UserPrintPage() {
 
       {!jobId ? (
         <>
-          <Paper elevation={2} sx={{ p: 2, mb: 2 }}>
-            <TextField
-              label="Your Name or ID"
-              variant="outlined"
-              fullWidth
-              value={userName}
-              onChange={(e) => setUserName(e.target.value)}
-              helperText="This is how the merchant will identify your job."
-            />
-          </Paper>
           <Paper elevation={2} sx={{ p: 2, mb: 4 }}>
             <FileUploader onFilesAdded={handleFilesAdded} />
           </Paper>
@@ -166,7 +147,7 @@ export default function UserPrintPage() {
                 ))}
               </List>
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3 }}>
-                <Button variant="contained" size="large" onClick={handleProceed} disabled={isSubmitting || !userName.trim()}>
+                <Button variant="contained" size="large" onClick={handleProceed} disabled={isSubmitting}>
                   {isSubmitting ? <CircularProgress size={24} /> : 'Send Request to Merchant'}
                 </Button>
               </Box>
