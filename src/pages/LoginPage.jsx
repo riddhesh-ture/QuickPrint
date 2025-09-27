@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Container, Paper, Typography, TextField, Button, Box, Link as MuiLink, Alert, CircularProgress } from '@mui/material';
-import { signInMerchant } from '../firebase/auth';
+import { signInMerchant, getUserData, signOutUser } from '../firebase/auth';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -13,17 +13,26 @@ export default function LoginPage() {
 
   const handleLogin = async (event) => {
     event.preventDefault();
-    setError(null); // Clear previous errors
-    setLoading(true); // Start loading
+    setError(null);
+    setLoading(true);
 
     try {
-      await signInMerchant(email, password); // Call the simulated login
-      navigate('/merchant/dashboard'); // Redirect on success
+      const userCredential = await signInMerchant(email, password);
+      const data = await getUserData(userCredential.user.uid);
+
+      // --- ROLE CHECK ---
+      if (data?.role === 'user') {
+        await signOutUser();
+        setError('This is a user account. Please log in from the User Area.');
+      } else {
+        // If they are a merchant, proceed to the dashboard.
+        navigate('/merchant/dashboard');
+      }
+      
     } catch (err) {
-      console.error("Login attempt failed:", err.message); // Log for debugging
       setError(err.message || 'Failed to log in. Please check your credentials.');
     } finally {
-      setLoading(false); // End loading
+      setLoading(false);
     }
   };
 
@@ -66,7 +75,7 @@ export default function LoginPage() {
             fullWidth
             variant="contained"
             sx={{ mt: 3, mb: 2 }}
-            disabled={loading} // Disable button when loading
+            disabled={loading}
           >
             {loading ? <CircularProgress size={24} color="inherit" /> : 'Sign In'}
           </Button>
@@ -75,7 +84,7 @@ export default function LoginPage() {
               Don't have an account? Sign Up
             </MuiLink>
             <MuiLink component="button" variant="body2" onClick={() => navigate('/')} disabled={loading}>
-              Scan QR (User)
+              Go to User Area
             </MuiLink>
           </Box>
         </Box>

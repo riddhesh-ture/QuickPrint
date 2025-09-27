@@ -1,15 +1,16 @@
 // src/pages/HomePage.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, Container, Typography, Button, Paper, TextField, Alert, CircularProgress, Link as MuiLink } from '@mui/material';
+import { Box, Container, Typography, Paper, TextField, Alert, CircularProgress, Link as MuiLink, Button } from '@mui/material';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import { useAuth } from '../hooks/useAuth';
-import { signInUser, signUpUser } from '../firebase/auth';
+import { signInUser, signUpUser, getUserData, signOutUser } from '../firebase/auth';
 
 export default function HomePage() {
   const navigate = useNavigate();
-  const { user, loading } = useAuth();
+  const { user, userData, loading } = useAuth();
   const scannerRef = useRef(null);
+  
   const [showLogin, setShowLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -18,25 +19,34 @@ export default function HomePage() {
 
   // Function to initialize and render the scanner
   const startScanner = () => {
-    if (scannerRef.current) return; // Prevent re-initialization
-    const scanner = new Html5QrcodeScanner(
-      'reader',
-      { qrbox: { width: 250, height: 250 }, fps: 5 },
-      false
-    );
+    // Prevent re-initialization if scanner is already running
+    if (scannerRef.current) return;
+    
+    const scanner = new Html5QrcodeScanner('reader', { qrbox: { width: 250, height: 250 }, fps: 5 }, false);
+    scannerRef.current = scanner;
 
     const onScanSuccess = (decodedText) => {
-      scanner.clear().catch(err => console.error("Scanner clear failed", err));
-      scannerRef.current = null;
-      navigate(decodedText); // decodedText is the full URL from the QR code
+      // Cleanup the scanner instance to release the camera
+      if (scannerRef.current) {
+        scannerRef.current.clear().catch(err => console.error("Scanner clear failed", err));
+        scannerRef.current = null;
+      }
+      try {
+        // Parse the full URL and navigate to the path and params
+        const url = new URL(decodedText);
+        navigate(`${url.pathname}${url.search}`);
+      } catch (e) {
+        console.error("Invalid QR code URL:", e);
+        alert("Scanned QR code contains an invalid URL.");
+      }
     };
+    
     scanner.render(onScanSuccess, () => {});
-    scannerRef.current = scanner;
   };
 
-  // When the user is logged in, show the scanner
+  // When the user's role is confirmed as 'user', show the scanner
   useEffect(() => {
-    if (user && !loading) {
+    if (user && userData?.role === 'user' && !loading) {
       startScanner();
     }
     // Cleanup scanner when component unmounts or user logs out
@@ -46,20 +56,30 @@ export default function HomePage() {
         scannerRef.current = null;
       }
     };
-  }, [user, loading]);
+  }, [user, userData, loading]);
 
   const handleAuthAction = async (event) => {
     event.preventDefault();
     setError(null);
     setIsProcessing(true);
+
     try {
       if (showLogin) {
-        await signInUser(email, password);
+        const userCredential = await signInUser(email, password);
+        const data = await getUserData(userCredential.user.uid);
+        
+        // --- ROLE CHECK ---
+        // If the logged-in user is a merchant, sign them out immediately and show an error.
+        if (data?.role === 'merchant') {
+          await signOutUser();
+          setError('This is a merchant account. Please use the "Merchant Area" login.');
+        }
+        // If they are a user, the AuthContext will handle showing the scanner.
+        
       } else {
         await signUpUser(email, password);
-        alert('Sign up successful! You are now logged in.');
+        // The AuthContext will automatically log them in and the useEffect will trigger.
       }
-      // On success, the useAuth hook will update, and the useEffect will show the scanner
     } catch (err) {
       setError(err.message);
     } finally {
@@ -73,8 +93,8 @@ export default function HomePage() {
 
   return (
     <Container maxWidth="sm" sx={{ mt: 4, textAlign: 'center' }}>
-      {user ? (
-        // LOGGED-IN VIEW
+      {user && userData?.role === 'user' ? (
+        // LOGGED-IN USER VIEW
         <Paper elevation={3} sx={{ p: 3 }}>
           <Typography variant="h5" component="h1" gutterBottom>
             Ready to Print?
@@ -83,6 +103,14 @@ export default function HomePage() {
             Scan a merchant's QR code to begin.
           </Typography>
           <Box id="reader" width="100%" />
+        </Paper>
+      ) : user && userData?.role === 'merchant' ? (
+        // LOGGED-IN MERCHANT VIEW (Redirecting them)
+        <Paper elevation={3} sx={{p: 4}}>
+            <Typography variant="h6">You are logged in as a Merchant.</Typography>
+            <Button variant="contained" sx={{mt: 2}} onClick={() => navigate('/merchant/dashboard')}>
+                Go to Merchant Dashboard
+            </Button>
         </Paper>
       ) : (
         // LOGGED-OUT VIEW

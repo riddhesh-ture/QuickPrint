@@ -6,7 +6,16 @@ import {
   onAuthStateChanged,
 } from 'firebase/auth';
 import { auth, db } from './config';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
+
+// --- Helper function to get user role data ---
+export const getUserData = async (uid) => {
+  if (!uid) return null;
+  const userDocRef = doc(db, "users", uid);
+  const userDocSnap = await getDoc(userDocRef);
+  return userDocSnap.exists() ? userDocSnap.data() : null;
+};
+
 
 // --- User Authentication ---
 export const signUpUser = async (email, password) => {
