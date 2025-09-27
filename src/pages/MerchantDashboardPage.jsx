@@ -41,10 +41,10 @@ export default function MerchantDashboardPage() {
 
   const handleAcceptJob = async (job) => {
     try {
-      // First, let the user know we're starting the connection
+      // First, let the user know we're starting the connection.
       await updatePrintJob(job.id, { status: 'connecting' });
 
-      // Now, create the WebRTC offer. The user's page will react when the 'offer' field appears.
+      // Now, create the WebRTC offer. The user's page will react when this 'offer' field appears.
       await createOffer(job.id, (receivedFileBlob) => {
         console.log(`File for job ${job.id} received. Triggering print.`);
         printFileWithoutSaving(receivedFileBlob);

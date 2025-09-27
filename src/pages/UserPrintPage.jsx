@@ -23,7 +23,7 @@ export default function UserPrintPage() {
   // --- CRITICAL FIX: This effect now triggers ONLY when the 'offer' field appears ---
   // This completely solves the race condition.
   useEffect(() => {
-    // Ensure we only run this once when the offer is available and we haven't already started.
+    // Ensure we only run this once when the offer is available and the status is 'connecting'.
     if (jobData?.offer && jobData.status === 'connecting' && files.length > 0) {
       console.log('Merchant offer received! Creating WebRTC answer and starting file transfer.');
       const fileToSend = files[0].file; // Simplified to send the first file for this example
