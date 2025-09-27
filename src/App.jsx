@@ -2,7 +2,7 @@
 import React from 'react';
 import { Routes, Route, Navigate, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
-import { signOutUser } from './firebase/auth'; // Using a general sign out
+import { signOutUser } from './firebase/auth';
 import HomePage from './pages/HomePage';
 import UserPrintPage from './pages/UserPrintPage';
 import LoginPage from './pages/LoginPage';
@@ -12,18 +12,28 @@ import { AppBar, Toolbar, Typography, Button, Box } from '@mui/material';
 
 // Protected route for MERCHANTS
 const MerchantProtectedRoute = () => {
-  const { user, loading } = useAuth();
+  const { user, userData, loading } = useAuth();
   if (loading) return <div>Loading...</div>;
-  if (!user) return <Navigate to="/merchant/login" replace />;
-  return <Outlet context={{ merchantId: user.uid }} />;
+
+  // Must be a logged-in user AND have the 'merchant' role
+  if (user && userData?.role === 'merchant') {
+    return <Outlet context={{ merchantId: user.uid }} />;
+  }
+  // If logged in but not a merchant, send to user page. If not logged in, send to merchant login.
+  return <Navigate to={user ? '/' : '/merchant/login'} replace />;
 };
 
 // Protected route for USERS
 const UserProtectedRoute = () => {
-  const { user, loading } = useAuth();
+  const { user, userData, loading } = useAuth();
   if (loading) return <div>Loading...</div>;
-  if (!user) return <Navigate to="/" replace />; // Redirect to HomePage to log in
-  return <Outlet context={{ userId: user.uid }} />;
+  
+  // Must be a logged-in user AND have the 'user' role
+  if (user && userData?.role === 'user') {
+    return <Outlet />;
+  }
+  // If logged in but not a user, send to merchant page. If not logged in, send to user login.
+  return <Navigate to={user ? '/merchant/dashboard' : '/'} replace />;
 };
 
 const Layout = () => {
