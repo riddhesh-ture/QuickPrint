@@ -17,52 +17,37 @@ const servers = {
 export const createOffer = async (jobId, onFileReceived) => {
   const peerConnection = new RTCPeerConnection(servers);
 
-  // Event handler for when a data channel is received from the user
   peerConnection.ondatachannel = (event) => {
     const receiveChannel = event.channel;
     let receivedChunks = [];
-    let receivedSize = 0;
 
     receiveChannel.onmessage = (event) => {
-      receivedChunks.push(event.data);
-      receivedSize += event.data.byteLength;
-      // In a real app, you'd calculate progress here
+      // The last message is the "EOF" marker.
+      if (event.data !== 'EOF') {
+        receivedChunks.push(event.data);
+      } else {
+        const fileBlob = new Blob(receivedChunks);
+        console.log('File received successfully!', fileBlob);
+        onFileReceived(fileBlob);
+        peerConnection.close();
+      }
     };
 
-    receiveChannel.onclose = () => {
-      console.log('Data channel closed.');
-    };
-    
     receiveChannel.onopen = () => {
         console.log('Data channel opened! Ready to receive file.');
-        updateDoc(doc(db, 'printJobs', jobId), { status: 'transferring' });
     };
-
-    // When the channel indicates the transfer is done
-    // We'll use a simple text message "EOF" (End of File)
-    const interval = setInterval(() => {
-        if (receivedChunks.length > 0 && typeof receivedChunks[receivedChunks.length - 1] === 'string' && receivedChunks[receivedChunks.length - 1] === 'EOF') {
-            clearInterval(interval);
-            const fileBlob = new Blob(receivedChunks.slice(0, -1)); // Exclude the "EOF" marker
-            console.log('File received successfully!', fileBlob);
-            onFileReceived(fileBlob);
-            peerConnection.close();
-        }
-    }, 1000);
   };
 
   const jobRef = doc(db, 'printJobs', jobId);
   const offerCandidates = collection(jobRef, 'offerCandidates');
   const answerCandidates = collection(jobRef, 'answerCandidates');
 
-  // Listen for new ICE candidates and add them to the connection
   peerConnection.onicecandidate = async (event) => {
     if (event.candidate) {
       await addDoc(offerCandidates, event.candidate.toJSON());
     }
   };
 
-  // Create the offer
   const offerDescription = await peerConnection.createOffer();
   await peerConnection.setLocalDescription(offerDescription);
 
@@ -71,13 +56,14 @@ export const createOffer = async (jobId, onFileReceived) => {
     type: offerDescription.type,
   };
 
-  // Save the offer to the job document
   await updateDoc(jobRef, { offer });
 
   // Listen for the answer from the user
   onSnapshot(jobRef, (snapshot) => {
     const data = snapshot.data();
-    if (!peerConnection.currentRemoteDescription && data?.answer) {
+    // --- FIX: Ensure we only set remote description if it hasn't been set and the state is correct ---
+    if (peerConnection.signalingState === 'have-local-offer' && data?.answer) {
+      console.log('Got answer, setting remote description.');
       const answerDescription = new RTCSessionDescription(data.answer);
       peerConnection.setRemoteDescription(answerDescription);
     }
@@ -102,35 +88,34 @@ export const createOffer = async (jobId, onFileReceived) => {
 export const createAnswer = async (jobId, fileToSend, onTransferProgress) => {
   const peerConnection = new RTCPeerConnection(servers);
   
-  // Create the data channel for sending the file
   const dataChannel = peerConnection.createDataChannel('fileChannel');
-  let fileReader;
   const chunkSize = 16384; // 16KB chunks
 
   dataChannel.onopen = () => {
     console.log('Data channel is open. Starting file transfer.');
-    fileReader = new FileReader();
-    let offset = 0;
-
-    fileReader.onload = (e) => {
-      dataChannel.send(e.target.result);
-      offset += e.target.result.byteLength;
-      onTransferProgress(offset, fileToSend.size);
-
-      if (offset < fileToSend.size) {
-        readSlice(offset);
-      } else {
-        // Send End-of-File marker
-        dataChannel.send('EOF');
-        onTransferProgress(fileToSend.size, fileToSend.size); // Mark as complete
-      }
-    };
+    updateDoc(doc(db, 'printJobs', jobId), { status: 'transferring' });
     
-    const readSlice = o => {
-        const slice = fileToSend.slice(o, o + chunkSize);
-        fileReader.readAsArrayBuffer(slice);
+    let offset = 0;
+    const readSlice = () => {
+        const slice = fileToSend.slice(offset, offset + chunkSize);
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            if (dataChannel.readyState === 'open') {
+                dataChannel.send(event.target.result);
+                offset += event.target.result.byteLength;
+                onTransferProgress(offset, fileToSend.size);
+
+                if (offset < fileToSend.size) {
+                    readSlice();
+                } else {
+                    dataChannel.send('EOF'); // Send End-of-File marker
+                    onTransferProgress(fileToSend.size, fileToSend.size); // Mark as complete
+                }
+            }
+        };
+        reader.readAsArrayBuffer(slice);
     };
-    readSlice(0);
+    readSlice();
   };
   
   dataChannel.onclose = () => {
