@@ -1,4 +1,4 @@
-// src/hooks/useFirestore.js (Renamed from UseFireStore.js for convention)
+// src/hooks/useFirestore.js
 import { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase/firestore';
 import { collection, query, where, onSnapshot, orderBy, doc } from 'firebase/firestore';
@@ -12,14 +12,19 @@ export const useCollection = (collectionName, condition) => {
   const [documents, setDocuments] = useState(null);
   const [error, setError] = useState(null);
 
-  // Memoize the condition values to prevent useEffect from re-running unnecessarily
-  const conditionMemo = useMemo(() => condition ? [condition.fieldName, condition.operator, condition.value] : [], [condition]);
+  const conditionMemo = useMemo(() => (condition ? [condition.fieldName, condition.operator, condition.value] : []), [condition]);
 
   useEffect(() => {
     let q = query(collection(db, collectionName), orderBy('createdAt', 'desc'));
 
-    // Apply the where clause if the condition is valid
     if (conditionMemo.length === 3) {
+      // --- CRITICAL FIX HERE ---
+      // Do not run the query if the value to filter by is missing (e.g., merchantId is still loading).
+      // This prevents the "400 Bad Request" error.
+      if (!conditionMemo[2]) {
+        setDocuments(null); // Explicitly set documents to null to avoid showing stale data
+        return;
+      }
       q = query(q, where(conditionMemo[0], conditionMemo[1], conditionMemo[2]));
     }
 
@@ -28,7 +33,7 @@ export const useCollection = (collectionName, condition) => {
       setDocuments(results);
       setError(null);
     }, (err) => {
-      console.error(err);
+      console.error("Error in snapshot listener:", err);
       setError('Could not fetch data from the collection.');
     });
 
@@ -49,7 +54,6 @@ export const useDocument = (collectionName, id) => {
     const [error, setError] = useState(null);
 
     useEffect(() => {
-        // Only proceed if we have an ID
         if (!id) {
             setDocument(null);
             return;
@@ -65,7 +69,7 @@ export const useDocument = (collectionName, id) => {
                 setError('Document does not exist.');
             }
         }, (err) => {
-            console.error(err);
+            console.error("Error in document snapshot listener:", err);
             setError('Failed to fetch the document.');
         });
 
