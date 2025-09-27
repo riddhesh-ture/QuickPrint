@@ -1,24 +1,12 @@
 // src/pages/UserPrintPage.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Container, Typography, Button, Box, Paper, List, CircularProgress, Alert, TextField, LinearProgress } from '@mui/material';
-// import CheckCircleIcon from '@mui/icons-material/CheckCircle'; // Removed unused import
 import FileUploader from '../components/UserView/FileUploader';
 import UploadedFileItem from '../components/UserView/UploadedFileItem';
 import { createPrintJob, updatePrintJob } from '../firebase/firestore';
 import { useDocument } from '../hooks/useFirestore';
-
-// A simple WebRTC hook placeholder (in a real app, move this to its own file)
-const useWebRTC = (jobId) => {
-  const [peerConnection, setPeerConnection] = useState(null);
-  const [dataChannel, setDataChannel] = useState(null);
-  const [transferStatus, setTransferStatus] = useState('idle'); // idle, connecting, connected, transferring, complete, failed
-
-  // Add more WebRTC logic here: creating offers/answers, handling ICE candidates, sending files.
-  // This is a complex part that would be built out further.
-
-  return { transferStatus };
-};
+import { createAnswer } from '../firebase/webrtc'; // Import the new WebRTC function
 
 export default function UserPrintPage() {
   const [searchParams] = useSearchParams();
@@ -28,10 +16,21 @@ export default function UserPrintPage() {
   const [userName, setUserName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [jobId, setJobId] = useState(null);
+  const [transferProgress, setTransferProgress] = useState(0);
 
-  // Real-time listener for the job document
   const { document: jobData, error: jobError } = useDocument('printJobs', jobId);
-  const { transferStatus } = useWebRTC(jobId); // Basic WebRTC hook integration
+
+  // This effect triggers the WebRTC file transfer when the merchant accepts the job
+  useEffect(() => {
+    if (jobData?.status === 'connecting' && files.length > 0) {
+      console.log('Merchant accepted! Creating WebRTC answer and starting file transfer.');
+      const fileToSend = files[0].file; // Simplified to send the first file for this example
+
+      createAnswer(jobId, fileToSend, (sent, total) => {
+        setTransferProgress((sent / total) * 100);
+      });
+    }
+  }, [jobData, files, jobId]);
 
   const handleFilesAdded = (newFiles) => {
     const newFileEntries = newFiles.map(file => ({
@@ -64,14 +63,12 @@ export default function UserPrintPage() {
         specs: fileEntry.specs,
       }));
 
-      // No longer need userId, as the user is anonymous
       const newJobRef = await createPrintJob({
         merchantId: merchantId,
-        userName: userName.trim(), // Save the anonymous user's name
+        userName: userName.trim(),
         files: filesForJob,
         status: 'pending',
       });
-
       setJobId(newJobRef.id);
     } catch (error) {
       console.error('Error creating print job request:', error);
@@ -81,7 +78,6 @@ export default function UserPrintPage() {
     }
   };
 
-  // Mock payment handler
   const handlePayment = async () => {
     if (!jobId) return;
     alert('This would open a UPI payment app. Simulating successful payment.');
@@ -94,12 +90,15 @@ export default function UserPrintPage() {
 
     switch (jobData.status) {
       case 'pending':
-        return <Alert severity="info">Request sent! Waiting for the merchant to accept the job...</Alert>;
+        return <Alert severity="info">Request sent! Waiting for the merchant to accept...</Alert>;
+      case 'connecting':
+        return <Alert severity="info">Merchant accepted! Establishing secure connection...</Alert>;
       case 'transferring':
         return (
           <Box>
-            <Alert severity="info">Merchant has accepted! Transferring file securely via P2P...</Alert>
-            <LinearProgress variant="indeterminate" sx={{mt: 2}} />
+            <Alert severity="info">Connection established! Securely transferring file...</Alert>
+            <LinearProgress variant="determinate" value={transferProgress} sx={{ mt: 2 }} />
+            <Typography variant="body2" color="text.secondary">{Math.round(transferProgress)}%</Typography>
           </Box>
         );
       case 'awaitingPayment':

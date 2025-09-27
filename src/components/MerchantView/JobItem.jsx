@@ -25,6 +25,8 @@ export default function JobItem({ job, onAcceptJob, onCompleteJob, onDeleteJob }
             Accept & Start Transfer
           </Button>
         );
+      case 'connecting':
+         return <Chip label="Connecting with user..." color="info" size="small" />;
       case 'transferring':
         return (
            <Box sx={{ width: '100%', maxWidth: '200px' }}>

@@ -6,6 +6,7 @@ import MerchantProfile from '../components/MerchantView/MerchantProfile';
 import { useCollection } from '../hooks/useFirestore';
 import { updatePrintJob, deletePrintJob } from '../firebase/firestore';
 import { useOutletContext } from 'react-router-dom';
+import { createOffer } from '../firebase/webrtc'; // Import the new WebRTC function
 
 export default function MerchantDashboardPage() {
   const { merchantId } = useOutletContext();
@@ -20,36 +21,56 @@ export default function MerchantDashboardPage() {
     value: merchantId,
   });
 
-  // This function now starts the WebRTC transfer and calculates cost.
+  // --- THE VIRTUAL PRINT SERVICE ---
+  const printFileWithoutSaving = (fileBlob) => {
+    // Create an in-memory URL for the received file blob
+    const url = URL.createObjectURL(fileBlob);
+    
+    // Create a hidden iframe
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = url;
+    document.body.appendChild(iframe);
+
+    // Wait for the iframe to load the content, then trigger the print dialog
+    iframe.onload = () => {
+      setTimeout(() => {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+        // The user now sees the print dialog. After they close it, we clean up.
+        // We can't know when they close it, so we use a timeout.
+        setTimeout(() => {
+            document.body.removeChild(iframe);
+            URL.revokeObjectURL(url); // Clean up the in-memory URL
+        }, 1000); // 1 second delay for cleanup
+      }, 1);
+    };
+  };
+
   const handleAcceptJob = async (job) => {
     try {
-      // Placeholder for starting the WebRTC connection offer
-      console.log(`Starting WebRTC connection for job: ${job.id}`);
-      // In a real app, this is where you would create a WebRTC offer
-      // and save it to the job document in Firestore.
+      await updatePrintJob(job.id, { status: 'connecting' });
 
-      // For now, we'll just update the status to simulate the transfer starting.
-      await updatePrintJob(job.id, { status: 'transferring' });
-      
-      // Simulate file transfer completion after a few seconds
-      setTimeout(async () => {
-        // --- Automatic Price Calculation ---
-        // Cost is ₹1 per copy.
+      // Create a WebRTC offer and define what happens when the file is received
+      createOffer(job.id, (receivedFileBlob) => {
+        // --- THIS IS THE CALLBACK THAT RUNS AFTER FILE TRANSFER ---
+        console.log(`File for job ${job.id} received. Triggering print.`);
+        printFileWithoutSaving(receivedFileBlob);
+
+        // --- Automatic Price Calculation (₹1 per copy) ---
         const totalCost = job.files.reduce((acc, file) => {
-            const copies = parseInt(file.specs.copies, 10) || 1;
-            return acc + copies;
+          const copies = parseInt(file.specs.copies, 10) || 1;
+          return acc + copies;
         }, 0);
 
-        console.log(`Calculated cost for job ${job.id}: ₹${totalCost}`);
-
-        await updatePrintJob(job.id, {
+        // Update the job to awaiting payment
+        updatePrintJob(job.id, {
           cost: totalCost,
           status: 'awaitingPayment',
         });
-      }, 5000); // Simulate a 5-second file transfer
-
+      });
     } catch (e) {
-      console.error("Failed to accept job:", e);
+      console.error("Failed to accept job and create offer:", e);
       alert("Error: Could not accept the job.");
     }
   };
@@ -66,7 +87,6 @@ export default function MerchantDashboardPage() {
   const handleDeleteJob = async (jobId) => {
     try {
       await deletePrintJob(jobId);
-      console.log(`Job ${jobId} has been deleted.`);
     } catch(e) {
       console.error("Failed to delete job:", e);
       alert("Error: Could not delete the job.");
@@ -87,7 +107,7 @@ export default function MerchantDashboardPage() {
           {error && <Alert severity="error">{error}</Alert>}
           <PrintQueue
             jobs={jobs}
-            onAcceptJob={handleAcceptJob} // Pass the new handler
+            onAcceptJob={handleAcceptJob}
             onCompleteJob={handleCompleteJob}
             onDeleteJob={handleDeleteJob}
           />
