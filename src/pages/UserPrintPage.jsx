@@ -1,5 +1,6 @@
 // src/pages/UserPrintPage.jsx
-import React, { useState, useEffect } from 'react';
+import React, 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Container, Typography, Button, Box, Paper, List, CircularProgress, Alert, TextField, LinearProgress } from '@mui/material';
 import FileUploader from '../components/UserView/FileUploader';
@@ -17,13 +18,19 @@ export default function UserPrintPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [jobId, setJobId] = useState(null);
   const [transferProgress, setTransferProgress] = useState(0);
+  
+  // --- CRITICAL FIX: State to prevent infinite loop ---
+  const [webRTCStarted, setWebRTCStarted] = useState(false);
 
   const { document: jobData, error: jobError } = useDocument('printJobs', jobId);
 
-  // --- CRITICAL FIX: This effect now triggers ONLY when the 'offer' field appears ---
+  // This effect now triggers the WebRTC file transfer reliably and ONLY ONCE.
   useEffect(() => {
-    // Ensure we only run this once when the offer is available and the status is 'connecting'.
-    if (jobData?.offer && jobData.status === 'connecting' && files.length > 0) {
+    // Check all conditions: offer exists, status is correct, we have files, AND we haven't started yet.
+    if (jobData?.offer && jobData.status === 'connecting' && files.length > 0 && !webRTCStarted) {
+      // Set the lock immediately to prevent re-runs
+      setWebRTCStarted(true); 
+      
       console.log('Merchant offer received! Creating WebRTC answer and starting file transfer.');
       const fileToSend = files[0].file; // Simplified to send the first file for this example
 
@@ -31,7 +38,7 @@ export default function UserPrintPage() {
         setTransferProgress((sent / total) * 100);
       });
     }
-  }, [jobData?.offer, jobData?.status, files, jobId]); // Depend on the offer itself
+  }, [jobData, files, jobId, webRTCStarted]); // Add the new state to the dependency array
 
   const handleFilesAdded = (newFiles) => {
     const newFileEntries = newFiles.map(file => ({
