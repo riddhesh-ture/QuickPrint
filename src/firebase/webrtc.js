@@ -1,8 +1,8 @@
 // src/firebase/webrtc.js
 import { db } from './config';
-import { doc, getDoc, updateDoc, onSnapshot, collection, addDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, onSnapshot, collection, addDoc } from 'firebase/firestore';
 
-// Configuration for the STUN servers (helps browsers find each other)
+// Configuration for the STUN servers (helps browsers find each other across networks)
 const servers = {
   iceServers: [
     {
@@ -17,24 +17,25 @@ const servers = {
 export const createOffer = async (jobId, onFileReceived) => {
   const peerConnection = new RTCPeerConnection(servers);
 
+  // Event handler for when a data channel is received from the user
   peerConnection.ondatachannel = (event) => {
     const receiveChannel = event.channel;
     let receivedChunks = [];
 
     receiveChannel.onmessage = (event) => {
-      // The last message is the "EOF" marker.
+      // The last message is a simple string "EOF" (End of File)
       if (event.data !== 'EOF') {
         receivedChunks.push(event.data);
       } else {
         const fileBlob = new Blob(receivedChunks);
         console.log('File received successfully!', fileBlob);
-        onFileReceived(fileBlob);
+        onFileReceived(fileBlob); // Trigger the print function
         peerConnection.close();
       }
     };
 
     receiveChannel.onopen = () => {
-        console.log('Data channel opened! Ready to receive file.');
+      console.log('Data channel opened! Ready to receive file.');
     };
   };
 
@@ -42,12 +43,14 @@ export const createOffer = async (jobId, onFileReceived) => {
   const offerCandidates = collection(jobRef, 'offerCandidates');
   const answerCandidates = collection(jobRef, 'answerCandidates');
 
+  // Listen for new ICE candidates and add them to Firestore
   peerConnection.onicecandidate = async (event) => {
     if (event.candidate) {
       await addDoc(offerCandidates, event.candidate.toJSON());
     }
   };
 
+  // Create the offer
   const offerDescription = await peerConnection.createOffer();
   await peerConnection.setLocalDescription(offerDescription);
 
@@ -56,12 +59,13 @@ export const createOffer = async (jobId, onFileReceived) => {
     type: offerDescription.type,
   };
 
+  // Save the offer to the job document for the user to see
   await updateDoc(jobRef, { offer });
 
   // Listen for the answer from the user
   onSnapshot(jobRef, (snapshot) => {
     const data = snapshot.data();
-    // --- FIX: Ensure we only set remote description if it hasn't been set and the state is correct ---
+    // FIX: Only set remote description if it hasn't been set and the state is correct
     if (peerConnection.signalingState === 'have-local-offer' && data?.answer) {
       console.log('Got answer, setting remote description.');
       const answerDescription = new RTCSessionDescription(data.answer);
@@ -69,7 +73,7 @@ export const createOffer = async (jobId, onFileReceived) => {
     }
   });
 
-  // Listen for ICE candidates from the user
+  // Listen for ICE candidates from the user and add them to the connection
   onSnapshot(answerCandidates, (snapshot) => {
     snapshot.docChanges().forEach((change) => {
       if (change.type === 'added') {
@@ -88,6 +92,7 @@ export const createOffer = async (jobId, onFileReceived) => {
 export const createAnswer = async (jobId, fileToSend, onTransferProgress) => {
   const peerConnection = new RTCPeerConnection(servers);
   
+  // Create the data channel for sending the file
   const dataChannel = peerConnection.createDataChannel('fileChannel');
   const chunkSize = 16384; // 16KB chunks
 
@@ -97,23 +102,23 @@ export const createAnswer = async (jobId, fileToSend, onTransferProgress) => {
     
     let offset = 0;
     const readSlice = () => {
-        const slice = fileToSend.slice(offset, offset + chunkSize);
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            if (dataChannel.readyState === 'open') {
-                dataChannel.send(event.target.result);
-                offset += event.target.result.byteLength;
-                onTransferProgress(offset, fileToSend.size);
+      const slice = fileToSend.slice(offset, offset + chunkSize);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (dataChannel.readyState === 'open') {
+          dataChannel.send(event.target.result);
+          offset += event.target.result.byteLength;
+          onTransferProgress(offset, fileToSend.size);
 
-                if (offset < fileToSend.size) {
-                    readSlice();
-                } else {
-                    dataChannel.send('EOF'); // Send End-of-File marker
-                    onTransferProgress(fileToSend.size, fileToSend.size); // Mark as complete
-                }
-            }
-        };
-        reader.readAsArrayBuffer(slice);
+          if (offset < fileToSend.size) {
+            readSlice();
+          } else {
+            dataChannel.send('EOF'); // Send End-of-File marker
+            onTransferProgress(fileToSend.size, fileToSend.size);
+          }
+        }
+      };
+      reader.readAsArrayBuffer(slice);
     };
     readSlice();
   };

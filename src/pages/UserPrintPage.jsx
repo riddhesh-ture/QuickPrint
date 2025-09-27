@@ -21,7 +21,6 @@ export default function UserPrintPage() {
   const { document: jobData, error: jobError } = useDocument('printJobs', jobId);
 
   // --- CRITICAL FIX: This effect now triggers ONLY when the 'offer' field appears ---
-  // This completely solves the race condition.
   useEffect(() => {
     // Ensure we only run this once when the offer is available and the status is 'connecting'.
     if (jobData?.offer && jobData.status === 'connecting' && files.length > 0) {
