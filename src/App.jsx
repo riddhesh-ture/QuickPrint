@@ -8,32 +8,27 @@ import UserPrintPage from './pages/UserPrintPage';
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import MerchantDashboardPage from './pages/MerchantDashboardPage';
-import { AppBar, Toolbar, Typography, Button, Box } from '@mui/material';
+import { AppBar, Toolbar, Typography, Button, Box, CircularProgress } from '@mui/material';
 
-// Protected route for MERCHANTS
-const MerchantProtectedRoute = () => {
-  const { user, userData, loading } = useAuth();
-  if (loading) return <div>Loading...</div>;
+// A simpler protected route that just checks for authentication
+const ProtectedRoute = () => {
+  const { user, loading } = useAuth();
 
-  // Must be a logged-in user AND have the 'merchant' role
-  if (user && userData?.role === 'merchant') {
-    return <Outlet context={{ merchantId: user.uid }} />;
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+        <CircularProgress />
+      </Box>
+    );
   }
-  // If logged in but not a merchant, send to user page. If not logged in, send to merchant login.
-  return <Navigate to={user ? '/' : '/merchant/login'} replace />;
-};
 
-// Protected route for USERS
-const UserProtectedRoute = () => {
-  const { user, userData, loading } = useAuth();
-  if (loading) return <div>Loading...</div>;
-  
-  // Must be a logged-in user AND have the 'user' role
-  if (user && userData?.role === 'user') {
-    return <Outlet />;
+  // If not loading and no user, redirect to the user login page
+  if (!user) {
+    return <Navigate to="/" replace />;
   }
-  // If logged in but not a user, send to merchant page. If not logged in, send to user login.
-  return <Navigate to={user ? '/merchant/dashboard' : '/'} replace />;
+
+  // If user is logged in, render the child route (e.g., UserPrintPage or MerchantDashboardPage)
+  return <Outlet />;
 };
 
 const Layout = () => {
@@ -82,14 +77,10 @@ export default function App() {
         <Route path="/merchant/login" element={<LoginPage />} />
         <Route path="/merchant/signup" element={<SignupPage />} />
 
-        {/* --- Protected User Route --- */}
-        <Route element={<UserProtectedRoute />}>
+        {/* --- Protected Routes (for any logged-in user) --- */}
+        <Route element={<ProtectedRoute />}>
           <Route path="/print" element={<UserPrintPage />} />
-        </Route>
-        
-        {/* --- Protected Merchant Route --- */}
-        <Route path="/merchant" element={<MerchantProtectedRoute />}>
-          <Route path="dashboard" element={<MerchantDashboardPage />} />
+          <Route path="/merchant/dashboard" element={<MerchantDashboardPage />} />
         </Route>
 
         {/* --- Fallback Route --- */}

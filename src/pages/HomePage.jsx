@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Box, Container, Typography, Paper, TextField, Alert, CircularProgress, Link as MuiLink, Button } from '@mui/material';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import { useAuth } from '../hooks/useAuth';
-import { signInUser, signUpUser, getUserData, signOutUser } from '../firebase/auth';
+import { signInUser, signUpUser } from '../firebase/auth';
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -17,9 +17,9 @@ export default function HomePage() {
   const [error, setError] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // --- ADD THIS useEffect FOR AUTOMATIC REDIRECTION ---
+  // --- Automatic Redirection Logic ---
   useEffect(() => {
-    // If the user is loaded and is a merchant, redirect them to the dashboard.
+    // If the user is loaded and is a merchant, redirect them away from the user page.
     if (!loading && user && userData?.role === 'merchant') {
       navigate('/merchant/dashboard', { replace: true });
     }
@@ -67,14 +67,8 @@ export default function HomePage() {
 
     try {
       if (showLogin) {
-        const userCredential = await signInUser(email, password);
-        const data = await getUserData(userCredential.user.uid);
-        
-        if (data?.role === 'merchant') {
-          await signOutUser();
-          setError('This is a merchant account. Please use the "Merchant Area" login.');
-        }
-        
+        // We only need to sign in. The AuthContext and useEffect will handle role checks and redirects.
+        await signInUser(email, password);
       } else {
         await signUpUser(email, password);
       }
@@ -89,11 +83,10 @@ export default function HomePage() {
     return <Container sx={{mt: 4, textAlign: 'center'}}><CircularProgress /></Container>;
   }
 
-  // --- REMOVE THE MERCHANT REDIRECT BUTTON FROM THE JSX ---
-  // The useEffect above now handles this automatically.
   return (
     <Container maxWidth="sm" sx={{ mt: 4, textAlign: 'center' }}>
       {user && userData?.role === 'user' ? (
+        // RENDER SCANNER FOR LOGGED-IN USER
         <Paper elevation={3} sx={{ p: 3 }}>
           <Typography variant="h5" component="h1" gutterBottom>
             Ready to Print?
@@ -104,8 +97,8 @@ export default function HomePage() {
           <Box id="reader" width="100%" />
         </Paper>
       ) : (
-        // The merchant-specific view is removed because the redirect handles it.
-        // If the user is not a 'user', they will see the login form.
+        // RENDER LOGIN/SIGNUP FORM FOR LOGGED-OUT USERS
+        // Merchants who land here will be redirected by the useEffect hook.
         <Paper elevation={3} sx={{ p: 4 }}>
           <Typography component="h1" variant="h5">
             {showLogin ? 'User Login' : 'User Sign Up'}
@@ -117,9 +110,6 @@ export default function HomePage() {
             <Button type="submit" fullWidth variant="contained" sx={{ mt: 3, mb: 2 }} disabled={isProcessing}>
               {isProcessing ? <CircularProgress size={24} /> : (showLogin ? 'Login' : 'Sign Up')}
             </Button>
-            
-            {/* --- CRITICAL FIX HERE --- */}
-            {/* Added type="button" to prevent the link from submitting the form */}
             <MuiLink component="button" type="button" variant="body2" onClick={() => setShowLogin(!showLogin)}>
               {showLogin ? "Don't have an account? Sign Up" : "Already have an account? Login"}
             </MuiLink>

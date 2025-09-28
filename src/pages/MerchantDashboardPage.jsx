@@ -1,19 +1,40 @@
 // src/pages/MerchantDashboardPage.jsx
 import React from 'react';
-import { Container, Typography, Box, Alert } from '@mui/material';
+import { Container, Typography, Box, Alert, CircularProgress } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
 import PrintQueue from '../components/MerchantView/PrintQueue';
 import MerchantProfile from '../components/MerchantView/MerchantProfile';
 import { useCollection } from '../hooks/useFirestore';
 import { updatePrintJob, deletePrintJob } from '../firebase/firestore';
-import { useOutletContext } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
 import { createOffer } from '../firebase/webrtc';
 
 export default function MerchantDashboardPage() {
-  const { merchantId } = useOutletContext();
+  const { user, userData, loading } = useAuth();
+  const navigate = useNavigate();
 
-  if (!merchantId) {
-    return <Alert severity="error">Merchant ID not found. Please log in again.</Alert>;
+  // Role-based redirection logic
+  React.useEffect(() => {
+    if (!loading && userData && userData.role !== 'merchant') {
+      console.log("Not a merchant, redirecting...");
+      navigate('/', { replace: true });
+    }
+  }, [user, userData, loading, navigate]);
+  
+  if (loading || !userData) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+        <CircularProgress />
+      </Box>
+    );
   }
+
+  // If the user's role is not a merchant, render nothing while redirecting
+  if (userData.role !== 'merchant') {
+    return null;
+  }
+  
+  const merchantId = user.uid;
 
   const { documents: jobs, error } = useCollection('printJobs', {
     fieldName: 'merchantId',
@@ -41,19 +62,13 @@ export default function MerchantDashboardPage() {
 
   const handleAcceptJob = async (job) => {
     try {
-      // First, let the user know we're starting the connection.
       await updatePrintJob(job.id, { status: 'connecting' });
-
-      // Now, create the WebRTC offer. The user's page will react when this 'offer' field appears.
       await createOffer(job.id, (receivedFileBlob) => {
-        console.log(`File for job ${job.id} received. Triggering print.`);
         printFileWithoutSaving(receivedFileBlob);
-
         const totalCost = job.files.reduce((acc, file) => {
           const copies = parseInt(file.specs.copies, 10) || 1;
           return acc + copies;
         }, 0);
-
         updatePrintJob(job.id, {
           cost: totalCost,
           status: 'awaitingPayment',

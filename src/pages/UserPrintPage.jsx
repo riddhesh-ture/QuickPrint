@@ -6,8 +6,8 @@ import FileUploader from '../components/UserView/FileUploader';
 import UploadedFileItem from '../components/UserView/UploadedFileItem';
 import { createPrintJob, updatePrintJob } from '../firebase/firestore';
 import { useDocument } from '../hooks/useFirestore';
-import { createAnswer } from '../firebase/webrtc';
-import { useAuth } from '../hooks/useAuth'; // Get the authenticated user
+import { createAnswer, cleanupWebRTCConnection } from '../firebase/webrtc'; // Import cleanup
+import { useAuth } from '../hooks/useAuth';
 
 export default function UserPrintPage() {
   const [searchParams] = useSearchParams();
@@ -19,7 +19,7 @@ export default function UserPrintPage() {
   const [transferProgress, setTransferProgress] = useState(0);
   const [webRTCStarted, setWebRTCStarted] = useState(false);
 
-  const { user } = useAuth(); // Get the user from our context
+  const { user } = useAuth();
   const { document: jobData, error: jobError } = useDocument('printJobs', jobId);
 
   useEffect(() => {
@@ -31,6 +31,16 @@ export default function UserPrintPage() {
       });
     }
   }, [jobData, files, jobId, webRTCStarted]);
+
+  // --- CRITICAL CLEANUP EFFECT ---
+  // This runs when the component is unmounted (e.g., user navigates away)
+  useEffect(() => {
+    return () => {
+      if (jobId) {
+        cleanupWebRTCConnection();
+      }
+    };
+  }, [jobId]);
 
   const handleFilesAdded = (newFiles) => {
     const newFileEntries = newFiles.map(file => ({
@@ -54,7 +64,6 @@ export default function UserPrintPage() {
       alert('Error: Missing merchant ID, files, or user authentication.');
       return;
     }
-
     setIsSubmitting(true);
     try {
       const filesForJob = files.map(fileEntry => ({
@@ -65,8 +74,8 @@ export default function UserPrintPage() {
 
       const newJobRef = await createPrintJob({
         merchantId: merchantId,
-        userId: user.uid, // Use the authenticated user's ID
-        userName: user.email, // Use email as the display name
+        userId: user.uid,
+        userName: user.email,
         files: filesForJob,
         status: 'pending',
       });
@@ -127,7 +136,6 @@ export default function UserPrintPage() {
       <Typography variant="subtitle1" color="text.secondary" sx={{ mb: 2 }}>
         Sending to Merchant ID: {merchantId || 'N/A'}
       </Typography>
-
       {!jobId ? (
         <>
           <Paper elevation={2} sx={{ p: 2, mb: 4 }}>

@@ -3,13 +3,22 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Container, Paper, Typography, TextField, Button, Box, Link as MuiLink, Alert, CircularProgress } from '@mui/material';
 import { signInMerchant } from '../firebase/auth';
+import { useAuth } from '../hooks/useAuth';
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const { user, userData } = useAuth(); // Get auth state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  // If a merchant is already logged in, redirect them.
+  React.useEffect(() => {
+    if (user && userData?.role === 'merchant') {
+      navigate('/merchant/dashboard', { replace: true });
+    }
+  }, [user, userData, navigate]);
 
   const handleLogin = async (event) => {
     event.preventDefault();
@@ -17,10 +26,8 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // Just sign in. The AuthContext and protected routes will handle the rest.
+      // Just sign in. The AuthContext will update, and the useEffect will handle the redirect.
       await signInMerchant(email, password);
-      // DO NOT navigate from here. Let the app's state change trigger the redirect.
-      
     } catch (err) {
       setError(err.message || 'Failed to log in. Please check your credentials.');
     } finally {
@@ -72,10 +79,10 @@ export default function LoginPage() {
             {loading ? <CircularProgress size={24} color="inherit" /> : 'Sign In'}
           </Button>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', mt: 1 }}>
-            <MuiLink component="button" variant="body2" onClick={() => navigate('/merchant/signup')} disabled={loading}>
+            <MuiLink component="button" type="button" variant="body2" onClick={() => navigate('/merchant/signup')} disabled={loading}>
               Don't have an account? Sign Up
             </MuiLink>
-            <MuiLink component="button" variant="body2" onClick={() => navigate('/')} disabled={loading}>
+            <MuiLink component="button" type="button" variant="body2" onClick={() => navigate('/')} disabled={loading}>
               Go to User Area
             </MuiLink>
           </Box>
