@@ -19,7 +19,7 @@ export default function HomePage() {
 
   // --- Automatic Redirection Logic ---
   useEffect(() => {
-    // If the user is loaded and is a merchant, redirect them away from the user page.
+    // If auth state is loaded and the user has the 'merchant' role, redirect them away.
     if (!loading && user && userData?.role === 'merchant') {
       navigate('/merchant/dashboard', { replace: true });
     }
@@ -67,11 +67,11 @@ export default function HomePage() {
 
     try {
       if (showLogin) {
-        // We only need to sign in. The AuthContext and useEffect will handle role checks and redirects.
         await signInUser(email, password);
       } else {
         await signUpUser(email, password);
       }
+      // On success, the AuthContext will update, and the redirection useEffect will handle the rest.
     } catch (err) {
       setError(err.message);
     } finally {
@@ -98,7 +98,7 @@ export default function HomePage() {
         </Paper>
       ) : (
         // RENDER LOGIN/SIGNUP FORM FOR LOGGED-OUT USERS
-        // Merchants who land here will be redirected by the useEffect hook.
+        // Merchants who land here will be redirected automatically by the useEffect hook.
         <Paper elevation={3} sx={{ p: 4 }}>
           <Typography component="h1" variant="h5">
             {showLogin ? 'User Login' : 'User Sign Up'}

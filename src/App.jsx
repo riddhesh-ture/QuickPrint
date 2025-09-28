@@ -22,12 +22,13 @@ const ProtectedRoute = () => {
     );
   }
 
-  // If not loading and no user, redirect to the user login page
+  // If not loading and no user, redirect to the relevant login page
+  const isMerchantRoute = window.location.pathname.startsWith('/merchant');
   if (!user) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={isMerchantRoute ? "/merchant/login" : "/"} replace />;
   }
 
-  // If user is logged in, render the child route (e.g., UserPrintPage or MerchantDashboardPage)
+  // If user is logged in, render the child route
   return <Outlet />;
 };
 

@@ -1,5 +1,5 @@
 // src/pages/MerchantDashboardPage.jsx
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Container, Typography, Box, Alert, CircularProgress } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import PrintQueue from '../components/MerchantView/PrintQueue';
@@ -14,13 +14,14 @@ export default function MerchantDashboardPage() {
   const navigate = useNavigate();
 
   // Role-based redirection logic
-  React.useEffect(() => {
+  useEffect(() => {
     if (!loading && userData && userData.role !== 'merchant') {
-      console.log("Not a merchant, redirecting...");
+      console.log("User is not a merchant, redirecting from dashboard...");
       navigate('/', { replace: true });
     }
   }, [user, userData, loading, navigate]);
   
+  // Display a loading indicator while auth state and role are being checked
   if (loading || !userData) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
@@ -81,21 +82,21 @@ export default function MerchantDashboardPage() {
   };
 
   const handleCompleteJob = async (jobId) => {
-    try {
-      await updatePrintJob(jobId, { status: 'completed' });
-    } catch (e) {
-      console.error("Failed to complete job:", e);
-      alert("Error: Could not complete the job.");
-    }
+      try {
+        await updatePrintJob(jobId, { status: 'completed' });
+      } catch (e) {
+        console.error("Failed to complete job:", e);
+        alert("Error: Could not complete the job.");
+      }
   };
   
   const handleDeleteJob = async (jobId) => {
-    try {
-      await deletePrintJob(jobId);
-    } catch(e) {
-      console.error("Failed to delete job:", e);
-      alert("Error: Could not delete the job.");
-    }
+      try {
+        await deletePrintJob(jobId);
+      } catch(e) {
+        console.error("Failed to delete job:", e);
+        alert("Error: Could not delete the job.");
+      }
   };
 
   return (
