@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Container, Paper, Typography, TextField, Button, Box, Link as MuiLink, Alert, CircularProgress } from '@mui/material';
-import { signInMerchant, getUserData, signOutUser } from '../firebase/auth';
+import { signInMerchant } from '../firebase/auth';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -17,17 +17,9 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const userCredential = await signInMerchant(email, password);
-      const data = await getUserData(userCredential.user.uid);
-
-      // --- ROLE CHECK ---
-      if (data?.role === 'user') {
-        await signOutUser();
-        setError('This is a user account. Please log in from the User Area.');
-      } else {
-        // If they are a merchant, proceed to the dashboard.
-        navigate('/merchant/dashboard');
-      }
+      // Just sign in. The AuthContext and protected routes will handle the rest.
+      await signInMerchant(email, password);
+      // DO NOT navigate from here. Let the app's state change trigger the redirect.
       
     } catch (err) {
       setError(err.message || 'Failed to log in. Please check your credentials.');
