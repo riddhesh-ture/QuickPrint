@@ -17,6 +17,14 @@ export default function HomePage() {
   const [error, setError] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
+  // --- ADD THIS useEffect FOR AUTOMATIC REDIRECTION ---
+  useEffect(() => {
+    // If the user is loaded and is a merchant, redirect them to the dashboard.
+    if (!loading && user && userData?.role === 'merchant') {
+      navigate('/merchant/dashboard', { replace: true });
+    }
+  }, [user, userData, loading, navigate]);
+
   const startScanner = () => {
     if (scannerRef.current) return;
     
@@ -81,6 +89,8 @@ export default function HomePage() {
     return <Container sx={{mt: 4, textAlign: 'center'}}><CircularProgress /></Container>;
   }
 
+  // --- REMOVE THE MERCHANT REDIRECT BUTTON FROM THE JSX ---
+  // The useEffect above now handles this automatically.
   return (
     <Container maxWidth="sm" sx={{ mt: 4, textAlign: 'center' }}>
       {user && userData?.role === 'user' ? (
@@ -93,14 +103,9 @@ export default function HomePage() {
           </Typography>
           <Box id="reader" width="100%" />
         </Paper>
-      ) : user && userData?.role === 'merchant' ? (
-        <Paper elevation={3} sx={{p: 4}}>
-            <Typography variant="h6">You are logged in as a Merchant.</Typography>
-            <Button variant="contained" sx={{mt: 2}} onClick={() => navigate('/merchant/dashboard')}>
-                Go to Merchant Dashboard
-            </Button>
-        </Paper>
       ) : (
+        // The merchant-specific view is removed because the redirect handles it.
+        // If the user is not a 'user', they will see the login form.
         <Paper elevation={3} sx={{ p: 4 }}>
           <Typography component="h1" variant="h5">
             {showLogin ? 'User Login' : 'User Sign Up'}
