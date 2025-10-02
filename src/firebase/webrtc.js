@@ -12,10 +12,10 @@ const servers = {
       ],
     },
     {
-      // --- Your ExpressTURN server credentials from the screenshot ---
+      // --- CORRECTED ExpressTURN server credentials ---
       urls: 'turn:relay1.expressturn.com:3480',
-      username: 'efPU52K4SLOQ34W2QY',
-      credential: '1TJPNFxHKXrZfelz',
+      username: '000000002074763408',
+      credential: 'uWulUwn4PdxaX/0bZtFBdCQ0ymk=',
     }
   ],
   iceCandidatePoolSize: 10,
