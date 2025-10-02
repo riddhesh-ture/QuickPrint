@@ -2,25 +2,23 @@
 import { db } from './config';
 import { doc, getDoc, updateDoc, onSnapshot, collection, addDoc } from 'firebase/firestore';
 
-// --- NEW: WebRTC Configuration with STUN and TURN servers ---
+// --- NEW: WebRTC Configuration with a robust list of STUN and free TURN servers ---
 const servers = {
   iceServers: [
+    // --- Start with a list of reliable public STUN servers ---
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    // --- Add the free TURN server from Metered.ca as a fallback ---
+    // This is the key to getting through restrictive firewalls without needing a credit card.
     {
-      urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'],
+      urls: [
+        "turn:openrelay.metered.ca:80",
+        "turn:openrelay.metered.ca:443",
+      ],
+      username: "openrelayproject",
+      credential: "openrelayproject",
     },
-    {
-      // --- Free TURN server from Open Relay Project ---
-      // In a production app, you would use a paid TURN service like Twilio or Xirsys
-      // for better reliability and to avoid potential abuse.
-      urls: 'turn:openrelay.metered.ca:80',
-      username: 'openrelayproject',
-      credential: 'openrelayproject',
-    },
-    {
-      urls: 'turn:openrelay.metered.ca:443',
-      username: 'openrelayproject',
-      credential: 'openrelayproject',
-    }
   ],
   iceCandidatePoolSize: 10,
 };
@@ -45,8 +43,6 @@ export const cleanupWebRTCConnection = () => {
   }
 };
 
-// The rest of your webrtc.js file remains the same...
-
 // --- MERCHANT-SIDE LOGIC ---
 export const createOffer = async (jobId, onFileReceived) => {
   if (peerConnection) {
@@ -54,7 +50,8 @@ export const createOffer = async (jobId, onFileReceived) => {
     cleanupWebRTCConnection();
   }
   
-  peerConnection = new RTCPeerConnection(servers); // Use the new config
+  peerConnection = new RTCPeerConnection(servers);
+  peerConnection.oniceconnectionstatechange = () => console.log(`MERCHANT: ICE Connection State: ${peerConnection.iceConnectionState}`);
 
   peerConnection.ondatachannel = (event) => {
     const receiveChannel = event.channel;
@@ -77,8 +74,6 @@ export const createOffer = async (jobId, onFileReceived) => {
   peerConnection.onicecandidate = async (event) => {
     if (event.candidate) await addDoc(offerCandidates, event.candidate.toJSON());
   };
-  
-  peerConnection.oniceconnectionstatechange = () => console.log(`MERCHANT: ICE Connection State: ${peerConnection.iceConnectionState}`);
 
   const offerDescription = await peerConnection.createOffer();
   await peerConnection.setLocalDescription(offerDescription);
@@ -111,7 +106,8 @@ export const createAnswer = async (jobId, fileToSend, onTransferProgress) => {
     cleanupWebRTCConnection();
   }
 
-  peerConnection = new RTCPeerConnection(servers); // Use the new config
+  peerConnection = new RTCPeerConnection(servers);
+  peerConnection.oniceconnectionstatechange = () => console.log(`USER: ICE Connection State: ${peerConnection.iceConnectionState}`);
   
   dataChannel = peerConnection.createDataChannel('fileChannel');
   const chunkSize = 16384;
@@ -146,8 +142,6 @@ export const createAnswer = async (jobId, fileToSend, onTransferProgress) => {
   peerConnection.onicecandidate = async (event) => {
     if (event.candidate) await addDoc(answerCandidates, event.candidate.toJSON());
   };
-
-  peerConnection.oniceconnectionstatechange = () => console.log(`USER: ICE Connection State: ${peerConnection.iceConnectionState}`);
 
   const jobDoc = await getDoc(jobRef);
   const offerDescription = jobDoc.data().offer;
