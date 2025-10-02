@@ -19,10 +19,10 @@ export const useCollection = (collectionName, condition) => {
 
     if (conditionMemo.length === 3) {
       // --- CRITICAL FIX HERE ---
-      // Do not run the query if the value to filter by is missing (e.g., merchantId is still loading).
-      // This prevents the "400 Bad Request" error.
+      // Do not run the query if the value to filter by is null or undefined.
+      // This prevents the "400 Bad Request" error when the merchantId is still loading.
       if (!conditionMemo[2]) {
-        setDocuments(null); // Explicitly set documents to null to avoid showing stale data
+        setDocuments([]); // Return an empty array to prevent errors, not null
         return;
       }
       q = query(q, where(conditionMemo[0], conditionMemo[1], conditionMemo[2]));
