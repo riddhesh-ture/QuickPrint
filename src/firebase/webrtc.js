@@ -2,23 +2,21 @@
 import { db } from './config';
 import { doc, getDoc, updateDoc, onSnapshot, collection, addDoc } from 'firebase/firestore';
 
-// --- NEW: WebRTC Configuration with a robust list of STUN and free TURN servers ---
+// --- WebRTC Configuration with STUN and your ExpressTURN server ---
 const servers = {
   iceServers: [
-    // --- Start with a list of reliable public STUN servers ---
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    // --- Add the free TURN server from Metered.ca as a fallback ---
-    // This is the key to getting through restrictive firewalls without needing a credit card.
     {
       urls: [
-        "turn:openrelay.metered.ca:80",
-        "turn:openrelay.metered.ca:443",
+        'stun:stun1.l.google.com:19302', 
+        'stun:stun2.l.google.com:19302',
       ],
-      username: "openrelayproject",
-      credential: "openrelayproject",
     },
+    {
+      // --- Your ExpressTURN server credentials from the screenshot ---
+      urls: 'turn:relay1.expressturn.com:3480',
+      username: 'efPU52K4SLOQ34W2QY',
+      credential: '1TJPNFxHKXrZfelz',
+    }
   ],
   iceCandidatePoolSize: 10,
 };
