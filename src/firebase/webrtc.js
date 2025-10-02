@@ -2,17 +2,33 @@
 import { db } from './config';
 import { doc, getDoc, updateDoc, onSnapshot, collection, addDoc } from 'firebase/firestore';
 
+// --- NEW: WebRTC Configuration with STUN and TURN servers ---
+const servers = {
+  iceServers: [
+    {
+      urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'],
+    },
+    {
+      // --- Free TURN server from Open Relay Project ---
+      // In a production app, you would use a paid TURN service like Twilio or Xirsys
+      // for better reliability and to avoid potential abuse.
+      urls: 'turn:openrelay.metered.ca:80',
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
+    {
+      urls: 'turn:openrelay.metered.ca:443',
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    }
+  ],
+  iceCandidatePoolSize: 10,
+};
+
 // Module-level variables to hold the single connection and listeners
 let peerConnection;
 let dataChannel;
 let unsubscribers = [];
-
-const servers = {
-  iceServers: [
-    { urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] },
-  ],
-  iceCandidatePoolSize: 10,
-};
 
 // --- CRITICAL CLEANUP FUNCTION ---
 export const cleanupWebRTCConnection = () => {
@@ -29,6 +45,8 @@ export const cleanupWebRTCConnection = () => {
   }
 };
 
+// The rest of your webrtc.js file remains the same...
+
 // --- MERCHANT-SIDE LOGIC ---
 export const createOffer = async (jobId, onFileReceived) => {
   if (peerConnection) {
@@ -36,7 +54,7 @@ export const createOffer = async (jobId, onFileReceived) => {
     cleanupWebRTCConnection();
   }
   
-  peerConnection = new RTCPeerConnection(servers);
+  peerConnection = new RTCPeerConnection(servers); // Use the new config
 
   peerConnection.ondatachannel = (event) => {
     const receiveChannel = event.channel;
@@ -57,10 +75,7 @@ export const createOffer = async (jobId, onFileReceived) => {
   const answerCandidates = collection(jobRef, 'answerCandidates');
 
   peerConnection.onicecandidate = async (event) => {
-    if (event.candidate) {
-      console.log('MERCHANT: Found ICE candidate, adding to Firestore.');
-      await addDoc(offerCandidates, event.candidate.toJSON());
-    }
+    if (event.candidate) await addDoc(offerCandidates, event.candidate.toJSON());
   };
   
   peerConnection.oniceconnectionstatechange = () => console.log(`MERCHANT: ICE Connection State: ${peerConnection.iceConnectionState}`);
@@ -69,12 +84,10 @@ export const createOffer = async (jobId, onFileReceived) => {
   await peerConnection.setLocalDescription(offerDescription);
   const offer = { sdp: offerDescription.sdp, type: offerDescription.type };
   await updateDoc(jobRef, { offer });
-  console.log('MERCHANT: Offer created and saved.');
 
   const unsubJob = onSnapshot(jobRef, (snapshot) => {
     const data = snapshot.data();
     if (peerConnection && !peerConnection.currentRemoteDescription && data?.answer) {
-      console.log('MERCHANT: Got answer, setting remote description.');
       const answerDescription = new RTCSessionDescription(data.answer);
       peerConnection.setRemoteDescription(answerDescription);
     }
@@ -84,7 +97,6 @@ export const createOffer = async (jobId, onFileReceived) => {
   const unsubAnswerCandidates = onSnapshot(answerCandidates, (snapshot) => {
     snapshot.docChanges().forEach((change) => {
       if (change.type === 'added') {
-        console.log('MERCHANT: Received ICE candidate from user, adding it.');
         peerConnection.addIceCandidate(new RTCIceCandidate(change.doc.data()));
       }
     });
@@ -99,15 +111,13 @@ export const createAnswer = async (jobId, fileToSend, onTransferProgress) => {
     cleanupWebRTCConnection();
   }
 
-  peerConnection = new RTCPeerConnection(servers);
+  peerConnection = new RTCPeerConnection(servers); // Use the new config
   
   dataChannel = peerConnection.createDataChannel('fileChannel');
   const chunkSize = 16384;
 
   dataChannel.onopen = async () => {
-    console.log('USER: Data channel is open, starting file transfer.');
     await updateDoc(doc(db, 'printJobs', jobId), { status: 'transferring' });
-    
     let offset = 0;
     const readSlice = () => {
       const slice = fileToSend.slice(offset, offset + chunkSize);
@@ -121,7 +131,6 @@ export const createAnswer = async (jobId, fileToSend, onTransferProgress) => {
             readSlice();
           } else {
             dataChannel.send('EOF');
-            console.log('USER: File transfer complete.');
           }
         }
       };
@@ -135,10 +144,7 @@ export const createAnswer = async (jobId, fileToSend, onTransferProgress) => {
   const answerCandidates = collection(jobRef, 'answerCandidates');
 
   peerConnection.onicecandidate = async (event) => {
-    if (event.candidate) {
-      console.log('USER: Found ICE candidate, adding to Firestore.');
-      await addDoc(answerCandidates, event.candidate.toJSON());
-    }
+    if (event.candidate) await addDoc(answerCandidates, event.candidate.toJSON());
   };
 
   peerConnection.oniceconnectionstatechange = () => console.log(`USER: ICE Connection State: ${peerConnection.iceConnectionState}`);
@@ -147,19 +153,16 @@ export const createAnswer = async (jobId, fileToSend, onTransferProgress) => {
   const offerDescription = jobDoc.data().offer;
   
   await peerConnection.setRemoteDescription(new RTCSessionDescription(offerDescription));
-  console.log('USER: Set remote description from offer.');
 
   const answerDescription = await peerConnection.createAnswer();
   await peerConnection.setLocalDescription(answerDescription);
   
   const answer = { sdp: answerDescription.sdp, type: answerDescription.type };
   await updateDoc(jobRef, { answer });
-  console.log('USER: Answer created and saved.');
 
   const unsubOfferCandidates = onSnapshot(offerCandidates, (snapshot) => {
     snapshot.docChanges().forEach((change) => {
       if (change.type === 'added') {
-        console.log('USER: Received ICE candidate from merchant, adding it.');
         peerConnection.addIceCandidate(new RTCIceCandidate(change.doc.data()));
       }
     });
