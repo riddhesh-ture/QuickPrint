@@ -5,8 +5,6 @@ import { collection, query, where, onSnapshot, orderBy, doc } from 'firebase/fir
 
 /**
  * Hook to listen to a collection in real-time.
- * @param {string} collectionName The name of the collection.
- * @param {object} condition An object with { fieldName, operator, value } for the where clause.
  */
 export const useCollection = (collectionName, condition) => {
   const [documents, setDocuments] = useState(null);
@@ -15,6 +13,8 @@ export const useCollection = (collectionName, condition) => {
   const conditionMemo = useMemo(() => (condition ? [condition.fieldName, condition.operator, condition.value] : []), [condition]);
 
   useEffect(() => {
+    // Note: Firestore requires the 'orderBy' field to be the first field in any 'where' clause with an inequality check.
+    // For '==' checks, the order doesn't matter as much, but this is good practice.
     let q = query(collection(db, collectionName), orderBy('createdAt', 'desc'));
 
     if (conditionMemo.length === 3) {
@@ -46,8 +46,6 @@ export const useCollection = (collectionName, condition) => {
 
 /**
  * Hook to listen to a single document in real-time.
- * @param {string} collectionName The name of the collection.
- * @param {string} id The ID of the document to listen to.
  */
 export const useDocument = (collectionName, id) => {
     const [document, setDocument] = useState(null);
