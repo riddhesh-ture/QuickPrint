@@ -13,16 +13,13 @@ export const useCollection = (collectionName, condition) => {
   const conditionMemo = useMemo(() => (condition ? [condition.fieldName, condition.operator, condition.value] : []), [condition]);
 
   useEffect(() => {
-    // Note: Firestore requires the 'orderBy' field to be the first field in any 'where' clause with an inequality check.
-    // For '==' checks, the order doesn't matter as much, but this is good practice.
     let q = query(collection(db, collectionName), orderBy('createdAt', 'desc'));
 
     if (conditionMemo.length === 3) {
       // --- CRITICAL FIX HERE ---
       // Do not run the query if the value to filter by is null or undefined.
-      // This prevents the "400 Bad Request" error when the merchantId is still loading.
       if (!conditionMemo[2]) {
-        setDocuments([]); // Return an empty array to prevent errors, not null
+        setDocuments([]); // Return an empty array to prevent errors
         return;
       }
       q = query(q, where(conditionMemo[0], conditionMemo[1], conditionMemo[2]));
