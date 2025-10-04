@@ -2,7 +2,7 @@
 import { db } from './config';
 import { doc, getDoc, updateDoc, onSnapshot, collection, addDoc } from 'firebase/firestore';
 
-// --- WebRTC Configuration with STUN and your ExpressTURN server ---
+// --- WebRTC Configuration with STUN and your Metered TURN server ---
 const servers = {
   iceServers: [
     {
@@ -12,10 +12,10 @@ const servers = {
       ],
     },
     {
-      // --- CORRECTED ExpressTURN server credentials ---
-      urls: 'turn:relay1.expressturn.com:3480',
-      username: '000000002074763408',
-      credential: 'uWulUwn4PdxaX/0bZtFBdCQ0ymk=',
+      // --- Using your Metered TURN server credentials from environment variables ---
+      urls: import.meta.env.VITE_TURN_URL,
+      username: import.meta.env.VITE_TURN_USERNAME,
+      credential: import.meta.env.VITE_TURN_PASSWORD,
     }
   ],
   iceCandidatePoolSize: 10,
