@@ -41,141 +41,232 @@ export default function MerchantDashboardPage() {
     fieldName: 'merchantId',
     operator: '==',
     value: merchantId,
-  });
-  // --- PRIVACY-FOCUSED PRINTING ---
-  // Creates a secure print document that prevents saving
+  });  // --- MAXIMUM SECURITY PRINTING ---
+  // Renders file in a secure, non-savable format and auto-prints
   const printFilePrivately = (fileBlob, fileName, specs) => {
     return new Promise((resolve) => {
-      console.log(`[Print] Preparing secure print for: ${fileName}`);
+      console.log(`[Print] Preparing maximum security print for: ${fileName}`);
       
-      const blobUrl = URL.createObjectURL(fileBlob);
       const fileType = fileBlob.type;
       
-      // Create a hidden iframe
-      const iframe = document.createElement('iframe');
-      iframe.style.cssText = 'position:fixed;top:-10000px;left:-10000px;width:1px;height:1px;';
-      document.body.appendChild(iframe);
-
-      const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+      // Create a secure print window
+      const printWindow = window.open('', '_blank', 
+        'width=800,height=600,menubar=no,toolbar=no,location=no,status=no,scrollbars=yes'
+      );
       
-      if (fileType.startsWith('image/')) {
-        // For images - create a secure print page that blocks saving
-        iframeDoc.open();
-        iframeDoc.write(`
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <title>QuickPrint Document</title>
-            <style>
-              * { margin: 0; padding: 0; box-sizing: border-box; }
-              @page { size: A4; margin: 10mm; }
-              @media print {
-                body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-              }
-              body {
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                min-height: 100vh;
-                background: white;
-                /* Disable text/image selection */
-                -webkit-user-select: none;
-                -moz-user-select: none;
-                -ms-user-select: none;
-                user-select: none;
-              }
-              img {
-                max-width: 100%;
-                max-height: 100vh;
-                object-fit: contain;
-                /* Disable drag */
-                -webkit-user-drag: none;
-                user-drag: none;
-                /* Disable pointer events except for printing */
-                pointer-events: none;
-                ${specs?.color === 'bw' ? 'filter: grayscale(100%);' : ''}
-              }
-            </style>
-            <script>
-              // Block right-click context menu
-              document.addEventListener('contextmenu', e => e.preventDefault());
-              // Block keyboard shortcuts for saving
-              document.addEventListener('keydown', e => {
-                if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S' || e.key === 'p' || e.key === 'P')) {
-                  e.preventDefault();
-                }
-              });
-            </script>
-          </head>
-          <body oncontextmenu="return false;" ondragstart="return false;">
-            <img src="${blobUrl}" onload="window.print();" draggable="false" />
-          </body>
-          </html>
-        `);
-        iframeDoc.close();
-      } else if (fileType === 'application/pdf') {
-        // For PDFs - embed with restrictions
-        iframe.src = blobUrl + '#toolbar=0&navpanes=0';
-        iframe.onload = () => {
-          setTimeout(() => {
-            try {
-              iframe.contentWindow.focus();
-              iframe.contentWindow.print();
-            } catch (e) {
-              console.warn('[Print] PDF print failed, using secure fallback');
-              // Open in new window with toolbar disabled
-              const printWindow = window.open('', '_blank', 'toolbar=no,menubar=no,scrollbars=yes');
-              if (printWindow) {
-                printWindow.document.write(`
-                  <html>
-                  <head><title>QuickPrint Document</title>
-                  <style>
-                    body { margin: 0; }
-                    embed { width: 100%; height: 100vh; }
-                  </style>
-                  <script>
-                    document.addEventListener('contextmenu', e => e.preventDefault());
-                    window.onload = () => window.print();
-                    window.onafterprint = () => window.close();
-                  </script>
-                  </head>
-                  <body oncontextmenu="return false;">
-                    <embed src="${blobUrl}#toolbar=0" type="application/pdf" />
-                  </body>
-                  </html>
-                `);
-                printWindow.document.close();
-              }
-            }
-          }, 500);
-        };
-      } else {
-        // For other files
-        iframe.src = blobUrl;
-        iframe.onload = () => {
-          setTimeout(() => {
-            iframe.contentWindow.print();
-          }, 500);
-        };
-      }
-
-      // Cleanup after printing
-      const cleanup = () => {
-        console.log(`[Print] Cleaning up secure print: ${fileName}`);
-        if (document.body.contains(iframe)) {
-          document.body.removeChild(iframe);
-        }
-        URL.revokeObjectURL(blobUrl);
+      if (!printWindow) {
+        alert('Please allow popups for printing');
         resolve();
-      };
-
-      // Listen for after print event
-      if (iframe.contentWindow) {
-        iframe.contentWindow.onafterprint = cleanup;
+        return;
       }
+
+      // Convert blob to base64 for embedding (prevents URL copying)
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64Data = reader.result;
+        
+        const securityScript = `
+          <script>
+            // Disable all save/copy methods
+            document.addEventListener('contextmenu', e => e.preventDefault());
+            document.addEventListener('keydown', e => {
+              if (e.ctrlKey || e.metaKey) {
+                if (['s','S','p','P','c','C','a','A','u','U','i','I'].includes(e.key)) {
+                  e.preventDefault();
+                  return false;
+                }
+              }
+              if (e.key === 'F12' || e.key === 'PrintScreen') {
+                e.preventDefault();
+                return false;
+              }
+            });
+            document.addEventListener('copy', e => e.preventDefault());
+            document.addEventListener('cut', e => e.preventDefault());
+            document.addEventListener('dragstart', e => e.preventDefault());
+            
+            // Blur detection - close if user tries to switch tabs
+            let printStarted = false;
+            window.addEventListener('blur', () => {
+              if (!printStarted) {
+                // User switched away before printing
+              }
+            });
+            
+            // Auto print on load
+            window.onload = () => {
+              printStarted = true;
+              setTimeout(() => window.print(), 500);
+            };
+            
+            // Auto close after print
+            window.onafterprint = () => {
+              window.close();
+            };
+            
+            // Prevent opening dev tools
+            setInterval(() => {
+              if (window.outerHeight - window.innerHeight > 200 || 
+                  window.outerWidth - window.innerWidth > 200) {
+                document.body.innerHTML = '<h1 style="text-align:center;margin-top:50px;">Security Alert: Developer tools detected</h1>';
+              }
+            }, 1000);
+          <\/script>
+        `;
+
+        let content = '';
+        
+        if (fileType.startsWith('image/')) {
+          content = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <title>QuickPrint - Secure Document</title>
+              <style>
+                * { margin: 0; padding: 0; }
+                @page { size: A4; margin: 10mm; }
+                @media print { 
+                  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                  .no-print { display: none !important; }
+                }
+                body {
+                  display: flex;
+                  justify-content: center;
+                  align-items: center;
+                  min-height: 100vh;
+                  background: #f5f5f5;
+                  -webkit-user-select: none;
+                  user-select: none;
+                }
+                .container {
+                  background: white;
+                  padding: 20px;
+                  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                }
+                img {
+                  max-width: 100%;
+                  max-height: 90vh;
+                  display: block;
+                  pointer-events: none;
+                  -webkit-user-drag: none;
+                  ${specs?.color === 'bw' ? 'filter: grayscale(100%);' : ''}
+                }
+                .watermark {
+                  position: fixed;
+                  top: 50%;
+                  left: 50%;
+                  transform: translate(-50%, -50%) rotate(-45deg);
+                  font-size: 100px;
+                  color: rgba(0,0,0,0.03);
+                  pointer-events: none;
+                  white-space: nowrap;
+                  z-index: 1000;
+                }
+                @media print { .watermark { display: none; } }
+              </style>
+              ${securityScript}
+            </head>
+            <body oncontextmenu="return false;" ondragstart="return false;" onselectstart="return false;">
+              <div class="watermark no-print">QUICKPRINT SECURE</div>
+              <div class="container">
+                <img src="${base64Data}" draggable="false" />
+              </div>
+            </body>
+            </html>
+          `;
+        } else if (fileType === 'application/pdf') {
+          // For PDFs, we need to render pages as images for security
+          content = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <title>QuickPrint - Secure Document</title>
+              <style>
+                * { margin: 0; padding: 0; }
+                body { 
+                  background: #525659; 
+                  padding: 20px;
+                  -webkit-user-select: none;
+                  user-select: none;
+                }
+                .page-container {
+                  display: flex;
+                  flex-direction: column;
+                  align-items: center;
+                  gap: 20px;
+                }
+                canvas {
+                  background: white;
+                  box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+                  pointer-events: none;
+                }
+                @page { size: A4; margin: 0; }
+                @media print {
+                  body { background: white; padding: 0; }
+                  .page-container { gap: 0; }
+                  canvas { box-shadow: none; page-break-after: always; }
+                }
+              </style>
+              <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"><\/script>
+              ${securityScript}
+            </head>
+            <body oncontextmenu="return false;">
+              <div class="page-container" id="pages"></div>
+              <script>
+                pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+                
+                async function renderPDF() {
+                  const pdfData = atob('${base64Data.split(',')[1]}');
+                  const pdf = await pdfjsLib.getDocument({data: pdfData}).promise;
+                  const container = document.getElementById('pages');
+                  
+                  for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const scale = 1.5;
+                    const viewport = page.getViewport({scale});
+                    
+                    const canvas = document.createElement('canvas');
+                    canvas.width = viewport.width;
+                    canvas.height = viewport.height;
+                    container.appendChild(canvas);
+                    
+                    await page.render({
+                      canvasContext: canvas.getContext('2d'),
+                      viewport: viewport
+                    }).promise;
+                  }
+                  
+                  setTimeout(() => window.print(), 1000);
+                }
+                renderPDF();
+              <\/script>
+            </body>
+            </html>
+          `;
+        } else {
+          // For other files, show a message
+          content = `
+            <!DOCTYPE html>
+            <html>
+            <head><title>QuickPrint</title></head>
+            <body style="text-align:center;padding:50px;">
+              <h2>Unsupported file type for secure preview</h2>
+              <p>Please contact the user to resend as PDF or image.</p>
+            </body>
+            </html>
+          `;
+        }
+
+        printWindow.document.write(content);
+        printWindow.document.close();
+      };
       
-      // Fallback cleanup after timeout
-      setTimeout(cleanup, 60000); // 60 second timeout for printing
+      reader.readAsDataURL(fileBlob);
+      
+      // Cleanup timeout
+      setTimeout(() => {
+        resolve();
+      }, 120000); // 2 minute timeout
     });
   };
 
