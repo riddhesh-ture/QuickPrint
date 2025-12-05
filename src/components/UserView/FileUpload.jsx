@@ -15,7 +15,7 @@ import SecurityIcon from '@mui/icons-material/Security';
 import {
   validateFiles,
   getFileCategory,
-  formatFileSize,   
+  formatFileSize,
   getAcceptString,
   ALLOWED_EXTENSIONS,
   MAX_FILE_SIZE
