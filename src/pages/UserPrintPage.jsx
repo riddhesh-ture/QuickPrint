@@ -25,17 +25,14 @@ export default function UserPrintPage() {
 
   const { user } = useAuth();
   const { document: jobData, error: jobError } = useDocument('printJobs', jobId);
-
   // Generate UPI payment URL
   const generateUPIUrl = (amount) => {
-    const params = new URLSearchParams({
-      pa: UPI_VPA,
-      pn: UPI_NAME,
-      am: amount.toFixed(2),
-      cu: 'INR',
-      tn: `Print Job #${jobId?.slice(-6) || ''}`,
-    });
-    return `upi://pay?${params.toString()}`;
+    // Build URL manually to avoid encoding @ symbol
+    const pa = UPI_VPA;
+    const pn = encodeURIComponent(UPI_NAME);
+    const am = amount.toFixed(2);
+    const tn = encodeURIComponent(`Print Job #${jobId?.slice(-6) || ''}`);
+    return `upi://pay?pa=${pa}&pn=${pn}&am=${am}&cu=INR&tn=${tn}`;
   };
 
   const handleFilesAdded = (newFiles) => {
