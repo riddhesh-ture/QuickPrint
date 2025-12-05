@@ -47,12 +47,18 @@ export default function UserPrintPage() {
     const tn = encodeURIComponent(`Print Job #${jobId?.slice(-6) || ''}`);
     return `upi://pay?pa=${pa}&pn=${pn}&am=${am}&cu=INR&tn=${tn}`;
   };
-
   const handleFilesAdded = (newFiles) => {
     const newFileEntries = newFiles.map(file => ({
-      id: `${file.name}-${Date.now()}`,
+      id: `${file.name}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       file,
-      specs: { copies: 1, pages: '', color: 'bw', sides: 'single' },
+      specs: { 
+        copies: 1, 
+        pages: '', 
+        color: 'bw', 
+        sides: 'single',
+        paperSize: 'a4',
+        orientation: 'portrait'
+      },
     }));
     setFiles(prev => [...prev, ...newFileEntries]);
   };

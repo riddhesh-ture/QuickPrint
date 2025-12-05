@@ -16,7 +16,6 @@ export const getUserData = async (uid) => {
   return userDocSnap.exists() ? userDocSnap.data() : null;
 };
 
-
 // --- User Authentication ---
 export const signUpUser = async (email, password) => {
   const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -53,3 +52,10 @@ export const signOutUser = () => {
 };
 
 export { onAuthStateChanged };
+
+/**
+ * Sign up a new user with email and password
+ */
+export const signUpWithEmail = (email, password) => {
+  return createUserWithEmailAndPassword(auth, email, password);
+};
