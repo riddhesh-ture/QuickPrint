@@ -1,14 +1,15 @@
 // src/pages/UserPrintPage.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Container, Typography, Button, Box, Paper, List, CircularProgress, Alert, LinearProgress, Divider } from '@mui/material';
+import { Container, Typography, Button, Box, Paper, List, CircularProgress, Alert, LinearProgress, Divider, Chip, IconButton, Tooltip } from '@mui/material';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import { QRCodeSVG } from 'qrcode.react';
 import FileUploader from '../components/UserView/FileUploader';
 import UploadedFileItem from '../components/UserView/UploadedFileItem';
 import { createPrintJob, updatePrintJob } from '../firebase/firestore';
 import { useDocument } from '../hooks/useFirestore';
-import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../supabase/config';
+import { getOrCreateUserIdentity, regenerateUserName } from '../utils/nameGenerator';
 
 // UPI Configuration
 const UPI_VPA = 'riddheshture@upi';
@@ -22,12 +23,24 @@ export default function UserPrintPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [jobId, setJobId] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [userIdentity, setUserIdentity] = useState(null);
 
-  const { user } = useAuth();
   const { document: jobData, error: jobError } = useDocument('printJobs', jobId);
+
+  // Get or create user identity on mount
+  useEffect(() => {
+    const identity = getOrCreateUserIdentity();
+    setUserIdentity(identity);
+  }, []);
+
+  // Handle name regeneration
+  const handleRegenerateName = () => {
+    const newIdentity = regenerateUserName();
+    setUserIdentity(newIdentity);
+  };
+
   // Generate UPI payment URL
   const generateUPIUrl = (amount) => {
-    // Build URL manually to avoid encoding @ symbol
     const pa = UPI_VPA;
     const pn = encodeURIComponent(UPI_NAME);
     const am = amount.toFixed(2);
@@ -53,7 +66,7 @@ export default function UserPrintPage() {
   };
 
   const uploadFileToSupabase = async (file, index, totalFiles) => {
-    const fileName = `${merchantId}/${user.uid}/${Date.now()}_${file.name}`;
+    const fileName = `${merchantId}/${userIdentity.id}/${Date.now()}_${file.name}`;
     console.log(`Uploading file ${index + 1}/${totalFiles}: ${fileName}`);
 
     const { data, error } = await supabase.storage
@@ -76,8 +89,8 @@ export default function UserPrintPage() {
   };
 
   const handleProceed = async () => {
-    if (!merchantId || files.length === 0 || !user) {
-      alert('Error: Missing merchant ID, files, or user authentication.');
+    if (!merchantId || files.length === 0 || !userIdentity) {
+      alert('Error: Missing merchant ID or files.');
       return;
     }
     setIsSubmitting(true);
@@ -99,8 +112,8 @@ export default function UserPrintPage() {
 
       const newJobRef = await createPrintJob({
         merchantId: merchantId,
-        userId: user.uid,
-        userName: user.email,
+        oderId: userIdentity.id,
+        userName: userIdentity.name,
         files: filesForJob,
         status: 'pending',
       });
@@ -134,6 +147,12 @@ export default function UserPrintPage() {
             <Typography color="text.secondary">
               Waiting for the merchant to process your print job...
             </Typography>
+            <Chip 
+              label={`Your ID: ${userIdentity?.name}`} 
+              color="primary" 
+              variant="outlined" 
+              sx={{ mt: 2 }} 
+            />
           </Paper>
         );
       
@@ -220,7 +239,7 @@ export default function UserPrintPage() {
               ✓ Payment Received!
             </Typography>
             <Typography color="text.secondary">
-              Thank you! Your documents are being printed.
+              Thank you! Collect your printouts from the merchant.
             </Typography>
           </Paper>
         );
@@ -249,17 +268,51 @@ export default function UserPrintPage() {
     }
   };
 
+  // Show loading while identity is being created
+  if (!userIdentity) {
+    return (
+      <Container maxWidth="md" sx={{ mt: 4, textAlign: 'center' }}>
+        <CircularProgress />
+      </Container>
+    );
+  }
+
   return (
     <Container maxWidth="md" sx={{ mt: 4, mb: 4 }}>
+      {/* User Identity Badge */}
+      <Paper 
+        sx={{ 
+          p: 2, 
+          mb: 3, 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between',
+          bgcolor: 'primary.light',
+          color: 'primary.contrastText'
+        }}
+      >
+        <Box>
+          <Typography variant="caption" sx={{ opacity: 0.8 }}>
+            Your Identity
+          </Typography>
+          <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+            🎭 {userIdentity.name}
+          </Typography>
+        </Box>
+        <Tooltip title="Get a new name">
+          <IconButton 
+            onClick={handleRegenerateName}
+            sx={{ color: 'inherit' }}
+            size="small"
+          >
+            <RefreshIcon />
+          </IconButton>
+        </Tooltip>
+      </Paper>
+
       <Typography variant="h4" component="h1" gutterBottom>
         {jobId ? 'Your Print Job' : 'Upload Your Files'}
       </Typography>
-      
-      {!jobId && (
-        <Typography variant="subtitle1" color="text.secondary" sx={{ mb: 2 }}>
-          Merchant ID: {merchantId || 'N/A'}
-        </Typography>
-      )}
 
       {jobId ? (
         renderJobStatus()
