@@ -3,7 +3,7 @@ import React from 'react';
 import { Box, Typography, Paper, List, CircularProgress } from '@mui/material';
 import JobItem from './JobItem';
 
-export default function PrintQueue({ jobs, onAcceptJob, onCompleteJob, onDeleteJob }) {
+export default function PrintQueue({ jobs, onAcceptJob, onCompleteJob, onDeleteJob, processingJobId }) {
   if (!jobs) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
@@ -30,6 +30,7 @@ export default function PrintQueue({ jobs, onAcceptJob, onCompleteJob, onDeleteJ
             onAcceptJob={onAcceptJob}
             onCompleteJob={onCompleteJob}
             onDeleteJob={onDeleteJob}
+            isProcessing={processingJobId === job.id}
           />
         ))}
       </List>
