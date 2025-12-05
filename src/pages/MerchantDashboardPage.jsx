@@ -1,36 +1,69 @@
 // src/pages/MerchantDashboardPage.jsx
 import React, { useState } from 'react';
-import { Container, Typography, Box, Alert, CircularProgress, Dialog, DialogContent, LinearProgress, Tabs, Tab, Paper } from '@mui/material';
+import {
+  Container, Typography, Box, Alert, CircularProgress, Dialog, DialogContent,
+  LinearProgress, Tabs, Tab, Paper, Chip, Card, CardContent, Grid, IconButton,
+  Tooltip, Fade, Snackbar
+} from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import PrintQueue from '../components/MerchantView/PrintQueue';
-import MerchantProfile from '../components/MerchantView/MerchantProfile';
-import DashboardStats from '../components/MerchantView/DashboardStats';
 import { useCollection } from '../hooks/useFirestore';
 import { updatePrintJob, deletePrintJob, db } from '../firebase/firestore';
 import { doc, updateDoc, increment } from 'firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
-import { supabase } from '../supabase/config';
+import { supabase } from '../supabase/client';
+import { securePrint } from '../utils/securePrint';
+import { getFileCategory } from '../utils/fileValidation';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import PrintIcon from '@mui/icons-material/Print';
+import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
+import PaymentIcon from '@mui/icons-material/Payment';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import TodayIcon from '@mui/icons-material/Today';
+import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
+import SecurityIcon from '@mui/icons-material/Security';
+
+const QuickStatCard = ({ title, value, icon, color = 'primary', subtitle }) => (
+  <Card sx={{ height: '100%', borderTop: 3, borderColor: `${color}.main` }}>
+    <CardContent sx={{ py: 2 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Box>
+          <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            {title}
+          </Typography>
+          <Typography variant="h4" fontWeight="bold" color={`${color}.main`}>
+            {value}
+          </Typography>
+          {subtitle && (
+            <Typography variant="caption" color="text.secondary">
+              {subtitle}
+            </Typography>
+          )}
+        </Box>
+        <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: `${color}.lighter`, color: `${color}.main` }}>
+          {icon}
+        </Box>
+      </Box>
+    </CardContent>
+  </Card>
+);
 
 export default function MerchantDashboardPage() {
   const { user, userData, loading } = useAuth();
   const navigate = useNavigate();
   const [processingJobId, setProcessingJobId] = useState(null);
-  const [printProgress, setPrintProgress] = useState({ current: 0, total: 0, fileName: '' });
+  const [printProgress, setPrintProgress] = useState({ current: 0, total: 0, fileName: '', status: '' });
   const [activeTab, setActiveTab] = useState(0);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
 
   React.useEffect(() => {
     if (!loading && userData && userData.role !== 'merchant') {
       navigate('/', { replace: true });
     }
   }, [user, userData, loading, navigate]);
-  
-  if (loading || !userData) {
-    return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}><CircularProgress /></Box>;
-  }
 
-  if (userData.role !== 'merchant') return null;
-  
-  const merchantId = user.uid;
+  const merchantId = user?.uid;
+  const merchantName = userData?.shopName || 'QuickPrint';
   const pricePerPageBW = userData?.pricePerPageBW || 2;
   const pricePerPageColor = userData?.pricePerPageColor || 5;
 
@@ -40,345 +73,369 @@ export default function MerchantDashboardPage() {
     value: merchantId,
   });
 
-  const pendingJobs = jobs?.filter(j => j.status === 'pending').length || 0;
-  const printFilePrivately = (fileBlob, fileName, specs) => {
-    return new Promise((resolve) => {
-      const fileType = fileBlob.type;
-      const printWindow = window.open('', '_blank', 'width=900,height=700,menubar=no,toolbar=no');
-      
-      if (!printWindow) { alert('Please allow popups for printing'); resolve(); return; }
+  if (loading || !userData) {
+    return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}><CircularProgress /></Box>;
+  }
 
-      const reader = new FileReader();
-      reader.onload = () => {
-        const base64Data = reader.result;
-        
-        // Build CSS for print specifications
-        const paperSize = specs?.paperSize || 'a4';
-        const orientation = specs?.orientation || 'portrait';
-        const isColor = specs?.color === 'color';
-        const isDoubleSided = specs?.sides === 'double';
-        const pageRange = specs?.pages || ''; // e.g., "1-5" or "1,3,5"
-        
-        const pageCSS = `
-          @page {
-            size: ${paperSize} ${orientation};
-            margin: 10mm;
-          }
-          @media print {
-            body { 
-              -webkit-print-color-adjust: exact; 
-              print-color-adjust: exact;
-              ${!isColor ? 'filter: grayscale(100%);' : ''}
-            }
-            .page { page-break-after: always; }
-            .page:last-child { page-break-after: auto; }
-          }
-        `;
+  if (userData.role !== 'merchant') return null;
 
-        const securityScript = `
-          <script>
-            document.addEventListener('contextmenu', e => e.preventDefault());
-            document.addEventListener('keydown', e => {
-              if ((e.ctrlKey || e.metaKey) && ['s','S','c','C','u','U'].includes(e.key)) {
-                e.preventDefault();
-              }
-            });
-            document.addEventListener('dragstart', e => e.preventDefault());
-          <\/script>
-        `;
+  const pendingJobs = jobs?.filter(j => j.status === 'pending') || [];
+  const processingJobs = jobs?.filter(j => j.status === 'processing') || [];
+  const awaitingPaymentJobs = jobs?.filter(j => j.status === 'awaitingPayment') || [];
+  const completedJobs = jobs?.filter(j => ['paid', 'completed'].includes(j.status)) || [];
 
-        let content = '';
-        
-        if (fileType.startsWith('image/')) {
-          content = `<!DOCTYPE html>
-            <html>
-            <head>
-              <title>QuickPrint - ${fileName}</title>
-              <style>
-                * { margin: 0; padding: 0; box-sizing: border-box; }
-                ${pageCSS}
-                body {
-                  display: flex;
-                  justify-content: center;
-                  align-items: center;
-                  min-height: 100vh;
-                  background: #f0f0f0;
-                  -webkit-user-select: none;
-                  user-select: none;
-                }
-                .container {
-                  background: white;
-                  padding: 20px;
-                  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                }
-                img {
-                  max-width: 100%;
-                  max-height: 90vh;
-                  display: block;
-                  pointer-events: none;
-                  ${!isColor ? 'filter: grayscale(100%);' : ''}
-                }
-                @media print {
-                  body { background: white; }
-                  .container { padding: 0; box-shadow: none; }
-                }
-              </style>
-              ${securityScript}
-            </head>
-            <body oncontextmenu="return false;">
-              <div class="container">
-                <img src="${base64Data}" draggable="false" />
-              </div>
-              <script>
-                window.onload = () => setTimeout(() => window.print(), 500);
-                window.onafterprint = () => window.close();
-              <\/script>
-            </body>
-            </html>`;
-        } else if (fileType === 'application/pdf') {
-          // For PDFs, render with pdf.js and apply specifications
-          content = `<!DOCTYPE html>
-            <html>
-            <head>
-              <title>QuickPrint - ${fileName}</title>
-              <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"><\/script>
-              <style>
-                * { margin: 0; padding: 0; box-sizing: border-box; }
-                ${pageCSS}
-                body { 
-                  background: #525659; 
-                  padding: 20px;
-                  -webkit-user-select: none;
-                  user-select: none;
-                }
-                .pages {
-                  display: flex;
-                  flex-direction: column;
-                  align-items: center;
-                  gap: 20px;
-                }
-                canvas {
-                  background: white;
-                  box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-                  pointer-events: none;
-                  ${!isColor ? 'filter: grayscale(100%);' : ''}
-                }
-                .page-info {
-                  color: white;
-                  font-family: Arial, sans-serif;
-                  font-size: 12px;
-                  margin-bottom: 5px;
-                }
-                @media print {
-                  body { background: white; padding: 0; }
-                  .pages { gap: 0; }
-                  canvas { 
-                    box-shadow: none; 
-                    page-break-after: always;
-                    max-width: 100%;
-                    height: auto !important;
-                  }
-                  canvas:last-child { page-break-after: auto; }
-                  .page-info { display: none; }
-                }
-              </style>
-              ${securityScript}
-            </head>
-            <body oncontextmenu="return false;">
-              <div class="pages" id="pages"></div>
-              <script>
-                pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-                
-                // Parse page range
-                function parsePageRange(rangeStr, totalPages) {
-                  if (!rangeStr || rangeStr.trim() === '') {
-                    return Array.from({length: totalPages}, (_, i) => i + 1);
-                  }
-                  const pages = new Set();
-                  rangeStr.split(',').forEach(part => {
-                    part = part.trim();
-                    if (part.includes('-')) {
-                      const [start, end] = part.split('-').map(Number);
-                      for (let i = Math.max(1, start); i <= Math.min(totalPages, end); i++) {
-                        pages.add(i);
-                      }
-                    } else {
-                      const num = parseInt(part);
-                      if (num >= 1 && num <= totalPages) pages.add(num);
-                    }
-                  });
-                  return Array.from(pages).sort((a, b) => a - b);
-                }
-                
-                async function renderPDF() {
-                  try {
-                    const pdfData = atob('${base64Data.split(',')[1]}');
-                    const pdf = await pdfjsLib.getDocument({data: pdfData}).promise;
-                    const container = document.getElementById('pages');
-                    const pageRange = '${pageRange}';
-                    const pagesToPrint = parsePageRange(pageRange, pdf.numPages);
-                    
-                    for (const pageNum of pagesToPrint) {
-                      const page = await pdf.getPage(pageNum);
-                      const scale = 1.5;
-                      const viewport = page.getViewport({scale});
-                      
-                      const pageInfo = document.createElement('div');
-                      pageInfo.className = 'page-info';
-                      pageInfo.textContent = 'Page ' + pageNum + ' of ' + pdf.numPages;
-                      container.appendChild(pageInfo);
-                      
-                      const canvas = document.createElement('canvas');
-                      canvas.width = viewport.width;
-                      canvas.height = viewport.height;
-                      container.appendChild(canvas);
-                      
-                      await page.render({
-                        canvasContext: canvas.getContext('2d'),
-                        viewport: viewport
-                      }).promise;
-                    }
-                    
-                    setTimeout(() => window.print(), 1000);
-                    window.onafterprint = () => window.close();
-                  } catch (err) {
-                    console.error('PDF render error:', err);
-                    document.body.innerHTML = '<h2 style="color:white;text-align:center;margin-top:50px;">Error loading PDF</h2>';
-                  }
-                }
-                renderPDF();
-              <\/script>
-            </body>
-            </html>`;
-        } else {
-          // For other document types (DOCX, etc.) - show message
-          content = `<!DOCTYPE html>
-            <html>
-            <head><title>QuickPrint</title></head>
-            <body style="text-align:center;padding:50px;font-family:Arial,sans-serif;">
-              <h2>Document Preview</h2>
-              <p>File: ${fileName}</p>
-              <p style="color:#666;">This file type requires conversion. Please ask the customer to send as PDF for best results.</p>
-              <p style="margin-top:20px;">
-                <a href="${base64Data}" download="${fileName}" style="color:blue;">Download Original File</a>
-              </p>
-            </body>
-            </html>`;
-        }
-
-        printWindow.document.write(content);
-        printWindow.document.close();
-      };
-      
-      reader.readAsDataURL(fileBlob);
-      setTimeout(resolve, 120000); // 2 minute timeout
-    });
-  };
-
+  // Securely delete file from Supabase after printing
   const deleteFileFromSupabase = async (fileUrl) => {
     try {
+      if (!fileUrl) return;
+      
       let filePath = '';
       if (fileUrl.includes('/print-jobs/')) {
         filePath = fileUrl.split('/print-jobs/')[1].split('?')[0];
       }
+      
       if (filePath) {
-        await supabase.storage.from('print-jobs').remove([decodeURIComponent(filePath)]);
-      }
-    } catch (e) { console.error(e); }
-  };
-
-  const updateMerchantStats = async (cost, pages) => {
-    await updateDoc(doc(db, 'users', merchantId), {
-      'stats.totalPrints': increment(pages),
-      'stats.totalEarnings': increment(cost),
-      'stats.todayPrints': increment(pages),
-      'stats.todayEarnings': increment(cost),
-      'stats.monthPrints': increment(pages),
-      'stats.monthEarnings': increment(cost),
-    });
-  };
-
-  const handleAcceptJob = async (job) => {
-    setProcessingJobId(job.id);
-    setPrintProgress({ current: 0, total: job.files.length, fileName: '' });
-
-    try {
-      await updatePrintJob(job.id, { status: 'processing' });
-      let totalCost = 0, totalPages = 0;
-
-      for (let i = 0; i < job.files.length; i++) {
-        const file = job.files[i];
-        setPrintProgress({ current: i + 1, total: job.files.length, fileName: file.name });
+        const { error } = await supabase.storage
+          .from('print-jobs')
+          .remove([decodeURIComponent(filePath)]);
         
-        const response = await fetch(file.fileUrl);
-        const fileBlob = await response.blob();
-        const copies = parseInt(file.specs?.copies, 10) || 1;
-        
-        for (let c = 0; c < copies; c++) await printFilePrivately(fileBlob, file.name, file.specs);
-
-        const price = file.specs?.color === 'color' ? pricePerPageColor : pricePerPageBW;
-        totalCost += copies * price;
-        totalPages += copies;
-        await deleteFileFromSupabase(file.fileUrl);
+        if (error) {
+          console.error('Error deleting file:', error);
+        }
       }
-
-      await updateMerchantStats(totalCost, totalPages);
-      await updatePrintJob(job.id, {
-        status: 'awaitingPayment',
-        cost: totalCost,
-        merchantUpiId: userData?.upiId || '',
-        merchantName: userData?.shopName || 'Merchant',
-      });
     } catch (e) {
-      alert(`Error: ${e.message}`);
-      await updatePrintJob(job.id, { status: 'pending' });
-    } finally {
-      setProcessingJobId(null);
+      console.error('Delete file error:', e);
     }
   };
 
-  const handleCompleteJob = async (jobId) => await updatePrintJob(jobId, { status: 'completed' });
-  const handleDeleteJob = async (jobId) => { if (window.confirm('Delete?')) await deletePrintJob(jobId); };
+  // Update merchant stats in Firestore
+  const updateMerchantStats = async (cost, pages) => {
+    try {
+      await updateDoc(doc(db, 'users', merchantId), {
+        'stats.totalPrints': increment(pages),
+        'stats.totalEarnings': increment(cost),
+        'stats.todayPrints': increment(pages),
+        'stats.todayEarnings': increment(cost),
+        'stats.monthPrints': increment(pages),
+        'stats.monthEarnings': increment(cost),
+      });
+    } catch (e) {
+      console.error('Stats update error:', e);
+    }
+  };
 
-  const pendingJobsList = jobs?.filter(j => ['pending', 'processing'].includes(j.status)) || [];
-  const awaitingPaymentJobs = jobs?.filter(j => j.status === 'awaitingPayment') || [];
-  const completedJobs = jobs?.filter(j => ['paid', 'completed'].includes(j.status)) || [];
+  // Handle accepting and printing a job
+  const handleAcceptJob = async (job) => {
+    setProcessingJobId(job.id);
+    setPrintProgress({ current: 0, total: job.files.length, fileName: '', status: 'Starting...' });
+
+    try {
+      // Update status to processing
+      await updatePrintJob(job.id, { status: 'processing' });
+      
+      let totalCost = 0;
+      let totalPages = 0;
+      const failedFiles = [];
+
+      for (let i = 0; i < job.files.length; i++) {
+        const file = job.files[i];
+        setPrintProgress({
+          current: i + 1,
+          total: job.files.length,
+          fileName: file.name,
+          status: 'Downloading...'
+        });
+
+        try {
+          // Fetch the file
+          const response = await fetch(file.fileUrl);
+          if (!response.ok) {
+            throw new Error(`Failed to download: ${response.status}`);
+          }
+          
+          const fileBlob = await response.blob();
+          const copies = parseInt(file.specs?.copies, 10) || 1;
+
+          // Validate file type
+          const fileCategory = getFileCategory({ name: file.name, type: fileBlob.type });
+          if (fileCategory === 'unknown') {
+            throw new Error('Unsupported file type');
+          }
+
+          setPrintProgress(prev => ({ ...prev, status: 'Printing...' }));
+
+          // Print each copy securely
+          for (let c = 0; c < copies; c++) {
+            if (copies > 1) {
+              setPrintProgress(prev => ({
+                ...prev,
+                status: `Printing copy ${c + 1} of ${copies}...`
+              }));
+            }
+            
+            await securePrint(fileBlob, file.name, file.specs, merchantName);
+          }
+
+          // Calculate cost
+          const pricePerPage = file.specs?.color === 'color' ? pricePerPageColor : pricePerPageBW;
+          const fileCost = copies * pricePerPage;
+          totalCost += fileCost;
+          totalPages += copies;
+
+          // Delete file from storage after successful print
+          setPrintProgress(prev => ({ ...prev, status: 'Cleaning up...' }));
+          await deleteFileFromSupabase(file.fileUrl);
+
+        } catch (fileError) {
+          console.error(`Error processing file ${file.name}:`, fileError);
+          failedFiles.push({ name: file.name, error: fileError.message });
+        }
+      }
+
+      // Update stats
+      if (totalPages > 0) {
+        await updateMerchantStats(totalCost, totalPages);
+      }
+
+      // Update job status
+      if (failedFiles.length === 0) {
+        await updatePrintJob(job.id, {
+          status: 'awaitingPayment',
+          cost: totalCost,
+          totalPages,
+          merchantUpiId: userData?.upiId || '',
+          merchantName: merchantName,
+          processedAt: new Date(),
+        });
+        
+        setSnackbar({
+          open: true,
+          message: `Successfully printed ${totalPages} pages. Cost: ₹${totalCost}`,
+          severity: 'success'
+        });
+      } else {
+        // Some files failed
+        await updatePrintJob(job.id, {
+          status: 'awaitingPayment',
+          cost: totalCost,
+          totalPages,
+          merchantUpiId: userData?.upiId || '',
+          merchantName: merchantName,
+          processedAt: new Date(),
+          failedFiles: failedFiles,
+        });
+        
+        setSnackbar({
+          open: true,
+          message: `Printed ${totalPages} pages with ${failedFiles.length} failed files`,
+          severity: 'warning'
+        });
+      }
+
+    } catch (e) {
+      console.error('Job processing error:', e);
+      setSnackbar({
+        open: true,
+        message: `Error: ${e.message}`,
+        severity: 'error'
+      });
+      
+      // Revert status on complete failure
+      await updatePrintJob(job.id, { status: 'pending' });
+    } finally {
+      setProcessingJobId(null);
+      setPrintProgress({ current: 0, total: 0, fileName: '', status: '' });
+    }
+  };
+
+  const handleCompleteJob = async (jobId) => {
+    try {
+      await updatePrintJob(jobId, { status: 'completed', completedAt: new Date() });
+      setSnackbar({ open: true, message: 'Job marked as completed', severity: 'success' });
+    } catch (e) {
+      setSnackbar({ open: true, message: 'Failed to update job', severity: 'error' });
+    }
+  };
+
+  const handleDeleteJob = async (jobId) => {
+    if (!window.confirm('Are you sure you want to delete this job?')) return;
+    
+    try {
+      await deletePrintJob(jobId);
+      setSnackbar({ open: true, message: 'Job deleted', severity: 'info' });
+    } catch (e) {
+      setSnackbar({ open: true, message: 'Failed to delete job', severity: 'error' });
+    }
+  };
+
+  const getTabJobs = () => {
+    switch (activeTab) {
+      case 0: return [...pendingJobs, ...processingJobs];
+      case 1: return awaitingPaymentJobs;
+      case 2: return completedJobs;
+      default: return [];
+    }
+  };
 
   return (
     <Container maxWidth="xl" sx={{ mt: 3, mb: 4 }}>
-      <Typography variant="h4" gutterBottom>Welcome, {userData?.ownerName || 'Merchant'}! 👋</Typography>
-      
-      <DashboardStats stats={userData?.stats} pendingJobs={pendingJobs} />
-
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '300px 1fr' }, gap: 3 }}>
-        <MerchantProfile merchantId={merchantId} />
+      {/* Header */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Box>
-          <Paper sx={{ mb: 2 }}>
-            <Tabs value={activeTab} onChange={(e, v) => setActiveTab(v)} variant="fullWidth">
-              <Tab label={`Pending (${pendingJobsList.length})`} />
-              <Tab label={`Awaiting Payment (${awaitingPaymentJobs.length})`} />
-              <Tab label={`Completed (${completedJobs.length})`} />
-            </Tabs>
-          </Paper>
-          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+          <Typography variant="h4" fontWeight="bold">
+            Print Jobs
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+            <SecurityIcon sx={{ fontSize: 16, color: 'success.main' }} />
+            <Typography variant="body2" color="text.secondary">
+              Secure printing enabled • Files auto-deleted after print
+            </Typography>
+          </Box>
+        </Box>
+        <Tooltip title="Refresh">
+          <IconButton onClick={() => window.location.reload()}>
+            <RefreshIcon />
+          </IconButton>
+        </Tooltip>
+      </Box>
+
+      {/* Quick Stats */}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={6} sm={3}>
+          <QuickStatCard
+            title="Pending"
+            value={pendingJobs.length}
+            icon={<HourglassEmptyIcon />}
+            color="warning"
+          />
+        </Grid>
+        <Grid item xs={6} sm={3}>
+          <QuickStatCard
+            title="Awaiting Payment"
+            value={awaitingPaymentJobs.length}
+            icon={<PaymentIcon />}
+            color="info"
+          />
+        </Grid>
+        <Grid item xs={6} sm={3}>
+          <QuickStatCard
+            title="Today's Prints"
+            value={userData?.stats?.todayPrints || 0}
+            icon={<TodayIcon />}
+            color="success"
+          />
+        </Grid>
+        <Grid item xs={6} sm={3}>
+          <QuickStatCard
+            title="Today's Earnings"
+            value={`₹${userData?.stats?.todayEarnings || 0}`}
+            icon={<AttachMoneyIcon />}
+            color="primary"
+          />
+        </Grid>
+      </Grid>
+
+      {/* Tabs */}
+      <Paper sx={{ mb: 2 }}>
+        <Tabs
+          value={activeTab}
+          onChange={(e, v) => setActiveTab(v)}
+          variant="fullWidth"
+          sx={{ '& .MuiTab-root': { py: 2 } }}
+        >
+          <Tab
+            label={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <PrintIcon fontSize="small" />
+                <span>Pending</span>
+                {pendingJobs.length > 0 && (
+                  <Chip label={pendingJobs.length} size="small" color="warning" />
+                )}
+              </Box>
+            }
+          />
+          <Tab
+            label={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <PaymentIcon fontSize="small" />
+                <span>Awaiting Payment</span>
+                {awaitingPaymentJobs.length > 0 && (
+                  <Chip label={awaitingPaymentJobs.length} size="small" color="info" />
+                )}
+              </Box>
+            }
+          />
+          <Tab
+            label={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <CheckCircleIcon fontSize="small" />
+                <span>Completed</span>
+                <Chip label={completedJobs.length} size="small" color="success" variant="outlined" />
+              </Box>
+            }
+          />
+        </Tabs>
+      </Paper>
+
+      {/* Error Alert */}
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+
+      {/* Print Queue */}
+      <Fade in={true}>
+        <Box>
           <PrintQueue
-            jobs={activeTab === 0 ? pendingJobsList : activeTab === 1 ? awaitingPaymentJobs : completedJobs}
+            jobs={getTabJobs()}
             onAcceptJob={handleAcceptJob}
             onCompleteJob={handleCompleteJob}
             onDeleteJob={handleDeleteJob}
             processingJobId={processingJobId}
           />
         </Box>
-      </Box>
+      </Fade>
 
+      {/* Processing Dialog */}
       <Dialog open={!!processingJobId} maxWidth="sm" fullWidth>
         <DialogContent sx={{ textAlign: 'center', py: 4 }}>
-          <CircularProgress size={60} sx={{ mb: 2 }} />
-          <Typography variant="h6">Processing Print Job</Typography>
-          <Typography variant="body2" color="text.secondary">{printProgress.fileName}</Typography>
-          <LinearProgress variant="determinate" value={printProgress.total ? (printProgress.current / printProgress.total) * 100 : 0} sx={{ mt: 2 }} />
+          <SecurityIcon sx={{ fontSize: 40, color: 'success.main', mb: 1 }} />
+          <CircularProgress size={60} sx={{ mb: 2, display: 'block', mx: 'auto' }} />
+          <Typography variant="h6" gutterBottom>
+            Secure Print in Progress
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            {printProgress.fileName}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+            {printProgress.status}
+          </Typography>
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            File {printProgress.current} of {printProgress.total}
+          </Typography>
+          <LinearProgress
+            variant="determinate"
+            value={printProgress.total ? (printProgress.current / printProgress.total) * 100 : 0}
+            sx={{ height: 8, borderRadius: 4 }}
+          />
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
+            🔒 Files are printed securely and deleted after completion
+          </Typography>
         </DialogContent>
       </Dialog>
+
+      {/* Snackbar */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={5000}
+        onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert
+          onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+          severity={snackbar.severity}
+          variant="filled"
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Container>
   );
 }
