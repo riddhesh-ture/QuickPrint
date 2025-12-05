@@ -1,6 +1,6 @@
 // src/pages/MerchantDashboardPage.jsx
 import React, { useState } from 'react';
-import { Container, Typography, Box, Alert, CircularProgress } from '@mui/material';
+import { Container, Typography, Box, Alert, CircularProgress, Dialog, DialogContent, LinearProgress } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import PrintQueue from '../components/MerchantView/PrintQueue';
 import MerchantProfile from '../components/MerchantView/MerchantProfile';
@@ -13,6 +13,7 @@ export default function MerchantDashboardPage() {
   const { user, userData, loading } = useAuth();
   const navigate = useNavigate();
   const [processingJobId, setProcessingJobId] = useState(null);
+  const [printProgress, setPrintProgress] = useState({ current: 0, total: 0, fileName: '' });
 
   // Role-based redirection logic
   React.useEffect(() => {
@@ -42,51 +43,107 @@ export default function MerchantDashboardPage() {
     value: merchantId,
   });
 
-  // --- PRIVACY-FOCUSED: Print file in browser without saving to disk ---
-  const printFileInBrowser = (fileBlob, fileName) => {
+  // --- PRIVACY-FOCUSED PRINTING ---
+  // Creates a clean print document that hides the original file URL
+  const printFilePrivately = (fileBlob, fileName, specs) => {
     return new Promise((resolve) => {
-      console.log(`[Print] Opening print dialog for: ${fileName}`);
+      console.log(`[Print] Preparing private print for: ${fileName}`);
       
       const blobUrl = URL.createObjectURL(fileBlob);
+      const fileType = fileBlob.type;
+      
+      // Create a hidden iframe with custom styling
       const iframe = document.createElement('iframe');
-      iframe.style.display = 'none';
-      iframe.src = blobUrl;
+      iframe.style.cssText = 'position:fixed;top:-10000px;left:-10000px;width:1px;height:1px;';
       document.body.appendChild(iframe);
 
-      iframe.onload = () => {
-        setTimeout(() => {
-          try {
-            iframe.contentWindow.focus();
-            iframe.contentWindow.print();
-          } catch (e) {
-            // For cross-origin issues, open in new tab
-            console.warn('[Print] iframe print failed, opening in new tab:', e);
-            window.open(blobUrl, '_blank');
-          }
-          
-          // Cleanup after print dialog closes (give user time to print)
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+      
+      // Determine how to display the file based on type
+      if (fileType.startsWith('image/')) {
+        // For images - create a clean print page
+        iframeDoc.open();
+        iframeDoc.write(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Print Document</title>
+            <style>
+              * { margin: 0; padding: 0; box-sizing: border-box; }
+              @page { 
+                size: A4; 
+                margin: 10mm;
+              }
+              @media print {
+                body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                .no-print { display: none !important; }
+              }
+              body {
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                min-height: 100vh;
+                background: white;
+              }
+              img {
+                max-width: 100%;
+                max-height: 100vh;
+                object-fit: contain;
+                ${specs?.color === 'bw' ? 'filter: grayscale(100%);' : ''}
+              }
+            </style>
+          </head>
+          <body>
+            <img src="${blobUrl}" onload="window.print();" />
+          </body>
+          </html>
+        `);
+        iframeDoc.close();
+      } else if (fileType === 'application/pdf') {
+        // For PDFs - embed directly
+        iframe.src = blobUrl;
+        iframe.onload = () => {
           setTimeout(() => {
-            console.log(`[Print] Cleaning up blob URL for: ${fileName}`);
-            document.body.removeChild(iframe);
-            URL.revokeObjectURL(blobUrl);
-            resolve();
-          }, 2000);
-        }, 500);
-      };
+            try {
+              iframe.contentWindow.focus();
+              iframe.contentWindow.print();
+            } catch (e) {
+              console.warn('[Print] PDF print failed, using fallback');
+              window.open(blobUrl, '_blank');
+            }
+          }, 500);
+        };
+      } else {
+        // For other files - try direct print
+        iframe.src = blobUrl;
+        iframe.onload = () => {
+          setTimeout(() => {
+            iframe.contentWindow.print();
+          }, 500);
+        };
+      }
 
-      iframe.onerror = () => {
-        console.error(`[Print] Failed to load file: ${fileName}`);
+      // Cleanup after printing (give time for print dialog)
+      const cleanup = () => {
+        console.log(`[Print] Cleaning up: ${fileName}`);
+        if (document.body.contains(iframe)) {
+          document.body.removeChild(iframe);
+        }
         URL.revokeObjectURL(blobUrl);
         resolve();
       };
+
+      // Listen for after print event
+      iframe.contentWindow.onafterprint = cleanup;
+      
+      // Fallback cleanup after timeout (in case onafterprint doesn't fire)
+      setTimeout(cleanup, 30000); // 30 second timeout
     });
   };
 
   // --- Delete file from Supabase Storage ---
   const deleteFileFromSupabase = async (fileUrl) => {
     try {
-      // Extract the file path from the URL
-      // URL format: https://xxx.supabase.co/storage/v1/object/public/print-jobs/path/to/file.pdf
       const urlParts = fileUrl.split('/storage/v1/object/public/print-jobs/');
       if (urlParts.length < 2) {
         console.error('[Supabase] Could not extract file path from URL:', fileUrl);
@@ -112,38 +169,41 @@ export default function MerchantDashboardPage() {
   // --- MAIN HANDLER: Accept job, fetch, print, delete, calculate cost ---
   const handleAcceptJob = async (job) => {
     setProcessingJobId(job.id);
-    console.log(`[Job ${job.id}] Starting to process...`);
+    setPrintProgress({ current: 0, total: job.files.length, fileName: '' });
+    console.log(`[Job ${job.id}] Starting to process ${job.files.length} file(s)...`);
 
     try {
-      // Update status to processing
       await updatePrintJob(job.id, { status: 'processing' });
 
       let totalCost = 0;
-      const pricePerPageBW = 1; // ₹1 per page B&W
+      const pricePerPageBW = 2; // ₹2 per page B&W
       const pricePerPageColor = 5; // ₹5 per page Color
 
       // Process each file
-      for (const file of job.files) {
-        console.log(`[Job ${job.id}] Fetching file: ${file.name}`);
+      for (let i = 0; i < job.files.length; i++) {
+        const file = job.files[i];
+        setPrintProgress({ current: i + 1, total: job.files.length, fileName: file.name });
         
-        // Fetch file into browser memory (not saved to disk)
+        console.log(`[Job ${job.id}] Fetching file ${i + 1}/${job.files.length}: ${file.name}`);
+        
+        // Fetch file into browser memory
         const response = await fetch(file.fileUrl);
         if (!response.ok) {
           throw new Error(`Failed to fetch file: ${file.name}`);
         }
         const fileBlob = await response.blob();
-        console.log(`[Job ${job.id}] File fetched into memory: ${file.name} (${(fileBlob.size / 1024).toFixed(2)} KB)`);
+        console.log(`[Job ${job.id}] File fetched: ${file.name} (${(fileBlob.size / 1024).toFixed(2)} KB)`);
 
-        // Print each copy
+        // Print each copy with privacy-focused method
         const copies = parseInt(file.specs?.copies, 10) || 1;
-        for (let i = 0; i < copies; i++) {
-          console.log(`[Job ${job.id}] Printing copy ${i + 1}/${copies} of ${file.name}`);
-          await printFileInBrowser(fileBlob, file.name);
+        for (let c = 0; c < copies; c++) {
+          console.log(`[Job ${job.id}] Printing copy ${c + 1}/${copies} of ${file.name}`);
+          await printFilePrivately(fileBlob, file.name, file.specs);
         }
 
         // Calculate cost
         const pricePerPage = file.specs?.color === 'color' ? pricePerPageColor : pricePerPageBW;
-        const pages = 1; // Assume 1 page per file (you could add PDF page counting later)
+        const pages = 1; // Assume 1 page per file
         totalCost += copies * pages * pricePerPage;
 
         // Delete file from Supabase for privacy
@@ -158,15 +218,13 @@ export default function MerchantDashboardPage() {
         cost: totalCost,
       });
 
-      alert(`Printing complete! Total cost: ₹${totalCost}. Waiting for user payment.`);
-
     } catch (e) {
       console.error(`[Job ${job.id}] Error processing job:`, e);
       alert(`Error processing job: ${e.message}`);
-      // Revert status on error
       await updatePrintJob(job.id, { status: 'pending' });
     } finally {
       setProcessingJobId(null);
+      setPrintProgress({ current: 0, total: 0, fileName: '' });
     }
   };
 
@@ -211,6 +269,30 @@ export default function MerchantDashboardPage() {
           />
         </Box>
       </Box>
+
+      {/* Print Progress Dialog */}
+      <Dialog open={!!processingJobId} maxWidth="sm" fullWidth>
+        <DialogContent sx={{ textAlign: 'center', py: 4 }}>
+          <CircularProgress size={60} sx={{ mb: 2 }} />
+          <Typography variant="h6" gutterBottom>
+            Processing Print Job
+          </Typography>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            Printing file {printProgress.current} of {printProgress.total}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+            {printProgress.fileName}
+          </Typography>
+          <LinearProgress 
+            variant="determinate" 
+            value={(printProgress.current / printProgress.total) * 100} 
+            sx={{ mt: 2 }}
+          />
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+            Please complete the print dialog when it appears...
+          </Typography>
+        </DialogContent>
+      </Dialog>
     </Container>
   );
 }

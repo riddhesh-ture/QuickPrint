@@ -1,13 +1,18 @@
 // src/pages/UserPrintPage.jsx
 import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Container, Typography, Button, Box, Paper, List, CircularProgress, Alert, LinearProgress } from '@mui/material';
+import { Container, Typography, Button, Box, Paper, List, CircularProgress, Alert, LinearProgress, Divider } from '@mui/material';
+import { QRCodeSVG } from 'qrcode.react';
 import FileUploader from '../components/UserView/FileUploader';
 import UploadedFileItem from '../components/UserView/UploadedFileItem';
 import { createPrintJob, updatePrintJob } from '../firebase/firestore';
 import { useDocument } from '../hooks/useFirestore';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../supabase/config';
+
+// UPI Configuration
+const UPI_VPA = 'riddheshture@upi';
+const UPI_NAME = 'QuickPrint';
 
 export default function UserPrintPage() {
   const [searchParams] = useSearchParams();
@@ -20,6 +25,18 @@ export default function UserPrintPage() {
 
   const { user } = useAuth();
   const { document: jobData, error: jobError } = useDocument('printJobs', jobId);
+
+  // Generate UPI payment URL
+  const generateUPIUrl = (amount) => {
+    const params = new URLSearchParams({
+      pa: UPI_VPA,
+      pn: UPI_NAME,
+      am: amount.toFixed(2),
+      cu: 'INR',
+      tn: `Print Job #${jobId?.slice(-6) || ''}`,
+    });
+    return `upi://pay?${params.toString()}`;
+  };
 
   const handleFilesAdded = (newFiles) => {
     const newFileEntries = newFiles.map(file => ({
@@ -38,7 +55,6 @@ export default function UserPrintPage() {
     setFiles(prev => prev.filter(f => f.id !== fileId));
   };
 
-  // --- NEW: Upload file to Supabase Storage ---
   const uploadFileToSupabase = async (file, index, totalFiles) => {
     const fileName = `${merchantId}/${user.uid}/${Date.now()}_${file.name}`;
     console.log(`Uploading file ${index + 1}/${totalFiles}: ${fileName}`);
@@ -55,12 +71,10 @@ export default function UserPrintPage() {
       throw error;
     }
 
-    // Get the public URL for the uploaded file
     const { data: publicUrlData } = supabase.storage
       .from('print-jobs')
       .getPublicUrl(fileName);
 
-    console.log(`File uploaded. Public URL: ${publicUrlData.publicUrl}`);
     return publicUrlData.publicUrl;
   };
 
@@ -86,18 +100,16 @@ export default function UserPrintPage() {
         setUploadProgress(((i + 1) / files.length) * 100);
       }
 
-      // Create a print job document in Firestore with the file URLs
       const newJobRef = await createPrintJob({
         merchantId: merchantId,
         userId: user.uid,
         userName: user.email,
         files: filesForJob,
-        status: 'pending', // The job is now waiting for the merchant
+        status: 'pending',
       });
       
-      console.log('Print job created with ID:', newJobRef.id);
       setJobId(newJobRef.id);
-      setFiles([]); // Clear the file list after successful submission
+      setFiles([]);
 
     } catch (error) {
       console.error('Error creating print job:', error);
@@ -107,56 +119,154 @@ export default function UserPrintPage() {
     }
   };
 
-  const handlePayment = async () => {
+  const handlePaymentComplete = async () => {
     if (!jobId) return;
-    // In a real app, you would integrate with a payment gateway here.
-    // For now, we simulate a successful payment.
-    alert('This would open a UPI payment app. Simulating successful payment.');
     await updatePrintJob(jobId, { status: 'paid' });
   };
 
-  // --- Render different UI based on job status ---
   const renderJobStatus = () => {
     if (jobError) return <Alert severity="error">{jobError}</Alert>;
-    if (!jobData) return <CircularProgress />;
+    if (!jobData) return <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress /></Box>;
 
     switch (jobData.status) {
       case 'pending':
-        return <Alert severity="info">Job sent! Waiting for the merchant to process it...</Alert>;
-      case 'awaitingPayment':
         return (
           <Paper sx={{ p: 3, textAlign: 'center' }}>
-            <Typography variant="h6">Payment Required</Typography>
-            <Typography variant="h4" sx={{ my: 2 }}>Total Cost: ₹{jobData.cost?.toFixed(2) || '0.00'}</Typography>
-            {/* In a real app, you'd generate a dynamic UPI QR code here */}
-            <Button variant="contained" size="large" onClick={handlePayment}>
-              Pay Now (Simulated)
+            <CircularProgress size={40} sx={{ mb: 2 }} />
+            <Typography variant="h6" gutterBottom>Job Submitted!</Typography>
+            <Typography color="text.secondary">
+              Waiting for the merchant to process your print job...
+            </Typography>
+          </Paper>
+        );
+      
+      case 'processing':
+        return (
+          <Paper sx={{ p: 3, textAlign: 'center' }}>
+            <CircularProgress size={40} sx={{ mb: 2 }} />
+            <Typography variant="h6" gutterBottom>Printing in Progress...</Typography>
+            <Typography color="text.secondary">
+              The merchant is currently printing your documents.
+            </Typography>
+          </Paper>
+        );
+      
+      case 'awaitingPayment':
+        const upiUrl = generateUPIUrl(jobData.cost || 0);
+        return (
+          <Paper sx={{ p: 3, textAlign: 'center' }}>
+            <Typography variant="h5" gutterBottom color="primary">
+              Payment Required
+            </Typography>
+            <Divider sx={{ my: 2 }} />
+            
+            <Typography variant="h3" sx={{ my: 2, fontWeight: 'bold' }}>
+              ₹{jobData.cost?.toFixed(2) || '0.00'}
+            </Typography>
+            
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              Scan the QR code or tap the button below to pay
+            </Typography>
+
+            <Box sx={{ 
+              display: 'inline-block', 
+              p: 2, 
+              bgcolor: 'white', 
+              borderRadius: 2,
+              border: '2px solid',
+              borderColor: 'primary.main',
+              mb: 3
+            }}>
+              <QRCodeSVG 
+                value={upiUrl} 
+                size={200}
+                level="H"
+                includeMargin={true}
+              />
+            </Box>
+
+            <Typography variant="caption" display="block" color="text.secondary" sx={{ mb: 2 }}>
+              UPI ID: {UPI_VPA}
+            </Typography>
+
+            <Button
+              variant="contained"
+              size="large"
+              fullWidth
+              href={upiUrl}
+              sx={{ 
+                mb: 2, 
+                py: 1.5,
+                bgcolor: '#5f259f',
+                '&:hover': { bgcolor: '#4a1d7a' }
+              }}
+            >
+              Pay ₹{jobData.cost?.toFixed(2)} with UPI App
+            </Button>
+
+            <Button
+              variant="outlined"
+              size="large"
+              fullWidth
+              onClick={handlePaymentComplete}
+              sx={{ py: 1.5 }}
+            >
+              I've Completed the Payment
             </Button>
           </Paper>
         );
+      
       case 'paid':
-        return <Alert severity="success">Payment successful! Your document is being printed.</Alert>;
+        return (
+          <Paper sx={{ p: 3, textAlign: 'center', bgcolor: '#e8f5e9' }}>
+            <Typography variant="h5" gutterBottom color="success.main">
+              ✓ Payment Received!
+            </Typography>
+            <Typography color="text.secondary">
+              Thank you! Your documents are being printed.
+            </Typography>
+          </Paper>
+        );
+      
       case 'completed':
-        return <Alert severity="success">Print Job Complete! Thank you.</Alert>;
+        return (
+          <Paper sx={{ p: 3, textAlign: 'center', bgcolor: '#4caf50' }}>
+            <Typography variant="h5" gutterBottom sx={{ color: 'white' }}>
+              🎉 Print Job Complete!
+            </Typography>
+            <Typography sx={{ color: 'white' }}>
+              Your documents have been printed successfully.
+            </Typography>
+            <Button
+              variant="contained"
+              sx={{ mt: 2, bgcolor: 'white', color: '#4caf50' }}
+              onClick={() => { setJobId(null); setFiles([]); }}
+            >
+              Print More Documents
+            </Button>
+          </Paper>
+        );
+      
       default:
-        return <Alert severity="info">Processing... Status: {jobData.status}</Alert>;
+        return <Paper sx={{ p: 3 }}><Typography>Status: {jobData.status}</Typography></Paper>;
     }
   };
 
   return (
-    <Container maxWidth="md" sx={{ mt: 4 }}>
+    <Container maxWidth="md" sx={{ mt: 4, mb: 4 }}>
       <Typography variant="h4" component="h1" gutterBottom>
-        Upload Your Files
+        {jobId ? 'Your Print Job' : 'Upload Your Files'}
       </Typography>
-      <Typography variant="subtitle1" color="text.secondary" sx={{ mb: 2 }}>
-        Printing for Merchant ID: {merchantId || 'N/A'}
-      </Typography>
+      
+      {!jobId && (
+        <Typography variant="subtitle1" color="text.secondary" sx={{ mb: 2 }}>
+          Merchant ID: {merchantId || 'N/A'}
+        </Typography>
+      )}
 
       {jobId ? (
-        // If a job has been submitted, show its status
         renderJobStatus()
       ) : (
-        // Otherwise, show the file upload UI
         <>
           <Paper elevation={2} sx={{ p: 2, mb: 4 }}>
             <FileUploader onFilesAdded={handleFilesAdded} />
@@ -165,7 +275,7 @@ export default function UserPrintPage() {
           {files.length > 0 && (
             <Box>
               <Typography variant="h5" component="h2" gutterBottom>
-                Your Files
+                Your Files ({files.length})
               </Typography>
               <List>
                 {files.map(fileEntry => (
@@ -177,7 +287,16 @@ export default function UserPrintPage() {
                   />
                 ))}
               </List>
-              {isSubmitting && <LinearProgress variant="determinate" value={uploadProgress} sx={{ my: 2 }} />}
+              
+              {isSubmitting && (
+                <Box sx={{ my: 2 }}>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                    Uploading files... {Math.round(uploadProgress)}%
+                  </Typography>
+                  <LinearProgress variant="determinate" value={uploadProgress} />
+                </Box>
+              )}
+              
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3 }}>
                 <Button
                   variant="contained"
