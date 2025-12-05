@@ -42,41 +42,35 @@ export default function MerchantDashboardPage() {
     operator: '==',
     value: merchantId,
   });
-
   // --- PRIVACY-FOCUSED PRINTING ---
-  // Creates a clean print document that hides the original file URL
+  // Creates a secure print document that prevents saving
   const printFilePrivately = (fileBlob, fileName, specs) => {
     return new Promise((resolve) => {
-      console.log(`[Print] Preparing private print for: ${fileName}`);
+      console.log(`[Print] Preparing secure print for: ${fileName}`);
       
       const blobUrl = URL.createObjectURL(fileBlob);
       const fileType = fileBlob.type;
       
-      // Create a hidden iframe with custom styling
+      // Create a hidden iframe
       const iframe = document.createElement('iframe');
       iframe.style.cssText = 'position:fixed;top:-10000px;left:-10000px;width:1px;height:1px;';
       document.body.appendChild(iframe);
 
       const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
       
-      // Determine how to display the file based on type
       if (fileType.startsWith('image/')) {
-        // For images - create a clean print page
+        // For images - create a secure print page that blocks saving
         iframeDoc.open();
         iframeDoc.write(`
           <!DOCTYPE html>
           <html>
           <head>
-            <title>Print Document</title>
+            <title>QuickPrint Document</title>
             <style>
               * { margin: 0; padding: 0; box-sizing: border-box; }
-              @page { 
-                size: A4; 
-                margin: 10mm;
-              }
+              @page { size: A4; margin: 10mm; }
               @media print {
                 body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-                .no-print { display: none !important; }
               }
               body {
                 display: flex;
@@ -84,37 +78,79 @@ export default function MerchantDashboardPage() {
                 align-items: center;
                 min-height: 100vh;
                 background: white;
+                /* Disable text/image selection */
+                -webkit-user-select: none;
+                -moz-user-select: none;
+                -ms-user-select: none;
+                user-select: none;
               }
               img {
                 max-width: 100%;
                 max-height: 100vh;
                 object-fit: contain;
+                /* Disable drag */
+                -webkit-user-drag: none;
+                user-drag: none;
+                /* Disable pointer events except for printing */
+                pointer-events: none;
                 ${specs?.color === 'bw' ? 'filter: grayscale(100%);' : ''}
               }
             </style>
+            <script>
+              // Block right-click context menu
+              document.addEventListener('contextmenu', e => e.preventDefault());
+              // Block keyboard shortcuts for saving
+              document.addEventListener('keydown', e => {
+                if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S' || e.key === 'p' || e.key === 'P')) {
+                  e.preventDefault();
+                }
+              });
+            </script>
           </head>
-          <body>
-            <img src="${blobUrl}" onload="window.print();" />
+          <body oncontextmenu="return false;" ondragstart="return false;">
+            <img src="${blobUrl}" onload="window.print();" draggable="false" />
           </body>
           </html>
         `);
         iframeDoc.close();
       } else if (fileType === 'application/pdf') {
-        // For PDFs - embed directly
-        iframe.src = blobUrl;
+        // For PDFs - embed with restrictions
+        iframe.src = blobUrl + '#toolbar=0&navpanes=0';
         iframe.onload = () => {
           setTimeout(() => {
             try {
               iframe.contentWindow.focus();
               iframe.contentWindow.print();
             } catch (e) {
-              console.warn('[Print] PDF print failed, using fallback');
-              window.open(blobUrl, '_blank');
+              console.warn('[Print] PDF print failed, using secure fallback');
+              // Open in new window with toolbar disabled
+              const printWindow = window.open('', '_blank', 'toolbar=no,menubar=no,scrollbars=yes');
+              if (printWindow) {
+                printWindow.document.write(`
+                  <html>
+                  <head><title>QuickPrint Document</title>
+                  <style>
+                    body { margin: 0; }
+                    embed { width: 100%; height: 100vh; }
+                  </style>
+                  <script>
+                    document.addEventListener('contextmenu', e => e.preventDefault());
+                    window.onload = () => window.print();
+                    window.onafterprint = () => window.close();
+                  </script>
+                  </head>
+                  <body oncontextmenu="return false;">
+                    <embed src="${blobUrl}#toolbar=0" type="application/pdf" />
+                  </body>
+                  </html>
+                `);
+                printWindow.document.close();
+              }
             }
           }, 500);
         };
       } else {
-        // For other files - try direct print
+        // For other files
         iframe.src = blobUrl;
         iframe.onload = () => {
           setTimeout(() => {
@@ -123,9 +159,9 @@ export default function MerchantDashboardPage() {
         };
       }
 
-      // Cleanup after printing (give time for print dialog)
+      // Cleanup after printing
       const cleanup = () => {
-        console.log(`[Print] Cleaning up: ${fileName}`);
+        console.log(`[Print] Cleaning up secure print: ${fileName}`);
         if (document.body.contains(iframe)) {
           document.body.removeChild(iframe);
         }
@@ -134,10 +170,12 @@ export default function MerchantDashboardPage() {
       };
 
       // Listen for after print event
-      iframe.contentWindow.onafterprint = cleanup;
+      if (iframe.contentWindow) {
+        iframe.contentWindow.onafterprint = cleanup;
+      }
       
-      // Fallback cleanup after timeout (in case onafterprint doesn't fire)
-      setTimeout(cleanup, 30000); // 30 second timeout
+      // Fallback cleanup after timeout
+      setTimeout(cleanup, 60000); // 60 second timeout for printing
     });
   };
 

@@ -64,7 +64,6 @@ export default function UserPrintPage() {
   const handleRemoveFile = (fileId) => {
     setFiles(prev => prev.filter(f => f.id !== fileId));
   };
-
   const uploadFileToSupabase = async (file, index, totalFiles) => {
     const fileName = `${merchantId}/${userIdentity.id}/${Date.now()}_${file.name}`;
     console.log(`Uploading file ${index + 1}/${totalFiles}: ${fileName}`);
@@ -81,11 +80,22 @@ export default function UserPrintPage() {
       throw error;
     }
 
-    const { data: publicUrlData } = supabase.storage
+    // Use signed URL with 1 hour expiration for privacy
+    // Files will be deleted after printing anyway
+    const { data: signedUrlData, error: signedError } = await supabase.storage
       .from('print-jobs')
-      .getPublicUrl(fileName);
+      .createSignedUrl(fileName, 3600); // 1 hour expiry
 
-    return publicUrlData.publicUrl;
+    if (signedError) {
+      console.error('Signed URL error:', signedError);
+      // Fallback to public URL if signed URL fails
+      const { data: publicUrlData } = supabase.storage
+        .from('print-jobs')
+        .getPublicUrl(fileName);
+      return publicUrlData.publicUrl;
+    }
+
+    return signedUrlData.signedUrl;
   };
 
   const handleProceed = async () => {
