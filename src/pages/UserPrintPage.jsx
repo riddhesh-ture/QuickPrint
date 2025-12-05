@@ -11,8 +11,7 @@ import { useDocument } from '../hooks/useFirestore';
 import { supabase } from '../supabase/config';
 import { getOrCreateUserIdentity, regenerateUserName } from '../utils/nameGenerator';
 
-// UPI Configuration
-const UPI_VPA = 'riddheshture@upi';
+// UPI Configuration - Now dynamic from merchant
 const UPI_NAME = 'QuickPrint';
 
 export default function UserPrintPage() {
@@ -39,10 +38,11 @@ export default function UserPrintPage() {
     setUserIdentity(newIdentity);
   };
 
-  // Generate UPI payment URL
-  const generateUPIUrl = (amount) => {
-    const pa = UPI_VPA;
-    const pn = encodeURIComponent(UPI_NAME);
+  // Generate UPI payment URL - Uses merchant's UPI ID from job data
+  const generateUPIUrl = (amount, merchantUpiId, merchantName) => {
+    if (!merchantUpiId) return '';
+    const pa = merchantUpiId;
+    const pn = encodeURIComponent(merchantName || UPI_NAME);
     const am = amount.toFixed(2);
     const tn = encodeURIComponent(`Print Job #${jobId?.slice(-6) || ''}`);
     return `upi://pay?pa=${pa}&pn=${pn}&am=${am}&cu=INR&tn=${tn}`;
@@ -176,9 +176,9 @@ export default function UserPrintPage() {
             </Typography>
           </Paper>
         );
-      
-      case 'awaitingPayment':
-        const upiUrl = generateUPIUrl(jobData.cost || 0);
+        case 'awaitingPayment':
+        const upiUrl = generateUPIUrl(jobData.cost || 0, jobData.merchantUpiId, jobData.merchantName);
+        const displayUpiId = jobData.merchantUpiId || 'N/A';
         return (
           <Paper sx={{ p: 3, textAlign: 'center' }}>
             <Typography variant="h5" gutterBottom color="primary">
@@ -190,45 +190,52 @@ export default function UserPrintPage() {
               ₹{jobData.cost?.toFixed(2) || '0.00'}
             </Typography>
             
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              Pay to: <strong>{jobData.merchantName || 'Merchant'}</strong>
+            </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
               Scan the QR code or tap the button below to pay
             </Typography>
 
-            <Box sx={{ 
-              display: 'inline-block', 
-              p: 2, 
-              bgcolor: 'white', 
-              borderRadius: 2,
-              border: '2px solid',
-              borderColor: 'primary.main',
-              mb: 3
-            }}>
-              <QRCodeSVG 
-                value={upiUrl} 
-                size={200}
-                level="H"
-                includeMargin={true}
-              />
-            </Box>
+            {upiUrl && (
+              <Box sx={{ 
+                display: 'inline-block', 
+                p: 2, 
+                bgcolor: 'white', 
+                borderRadius: 2,
+                border: '2px solid',
+                borderColor: 'primary.main',
+                mb: 3
+              }}>
+                <QRCodeSVG 
+                  value={upiUrl} 
+                  size={200}
+                  level="H"
+                  includeMargin={true}
+                />
+              </Box>
+            )}
 
             <Typography variant="caption" display="block" color="text.secondary" sx={{ mb: 2 }}>
-              UPI ID: {UPI_VPA}
+              UPI ID: {displayUpiId}
             </Typography>
 
-            <Button
-              variant="contained"
-              size="large"
-              fullWidth
-              href={upiUrl}
-              sx={{ 
-                mb: 2, 
-                py: 1.5,
-                bgcolor: '#5f259f',
-                '&:hover': { bgcolor: '#4a1d7a' }
-              }}
-            >
-              Pay ₹{jobData.cost?.toFixed(2)} with UPI App
-            </Button>
+            {upiUrl && (
+              <Button
+                variant="contained"
+                size="large"
+                fullWidth
+                href={upiUrl}
+                sx={{ 
+                  mb: 2, 
+                  py: 1.5,
+                  bgcolor: '#5f259f',
+                  '&:hover': { bgcolor: '#4a1d7a' }
+                }}
+              >
+                Pay ₹{jobData.cost?.toFixed(2)} with UPI App
+              </Button>
+            )}
 
             <Button
               variant="outlined"
