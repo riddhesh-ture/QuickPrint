@@ -124,16 +124,28 @@ export default function MerchantDashboardPage() {
     }
   };
 
-  // Handle accepting and printing a job
+  // Hardcoded fallback UPI ID
+  const FALLBACK_UPI_ID = 'riddheshture@upi';
+
+  // Handle accepting and printing a job - FAST version
   const handleAcceptJob = async (job) => {
     setProcessingJobId(job.id);
     setPrintProgress({ current: 0, total: job.files.length, fileName: '', status: 'Starting...' });
 
-    // Update status to processing immediately (fire and forget)
-    updatePrintJob(job.id, { status: 'processing' }).catch(console.error);
-    
+    // Calculate cost upfront
     let totalCost = 0;
     let totalPages = 0;
+    
+    job.files.forEach(file => {
+      const copies = parseInt(file.specs?.copies, 10) || 1;
+      const pricePerPage = file.specs?.color === 'color' ? pricePerPageColor : pricePerPageBW;
+      totalCost += copies * pricePerPage;
+      totalPages += copies;
+    });
+
+    // Update status to processing immediately
+    updatePrintJob(job.id, { status: 'processing' }).catch(console.error);
+
     const failedFiles = [];
 
     try {
@@ -147,24 +159,23 @@ export default function MerchantDashboardPage() {
         });
 
         try {
-          // Fetch the file
-          const response = await fetch(file.fileUrl);
+          // Fetch with timeout
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 sec timeout
+          
+          const response = await fetch(file.fileUrl, { signal: controller.signal });
+          clearTimeout(timeoutId);
+          
           if (!response.ok) {
-            throw new Error(`Failed to download: ${response.status}`);
+            throw new Error(`Download failed: ${response.status}`);
           }
           
           const fileBlob = await response.blob();
           const copies = parseInt(file.specs?.copies, 10) || 1;
 
-          // Validate file type
-          const fileCategory = getFileCategory({ name: file.name, type: fileBlob.type });
-          if (fileCategory === 'unknown') {
-            throw new Error('Unsupported file type');
-          }
-
           setPrintProgress(prev => ({ ...prev, status: 'Printing...' }));
 
-          // Print each copy securely - this now resolves in 3 seconds
+          // Print - this now resolves in max 3 seconds per file
           for (let c = 0; c < copies; c++) {
             if (copies > 1) {
               setPrintProgress(prev => ({
@@ -172,18 +183,10 @@ export default function MerchantDashboardPage() {
                 status: `Printing copy ${c + 1} of ${copies}...`
               }));
             }
-            
             await securePrint(fileBlob, file.name, file.specs, merchantName);
           }
 
-          // Calculate cost
-          const pricePerPage = file.specs?.color === 'color' ? pricePerPageColor : pricePerPageBW;
-          const fileCost = copies * pricePerPage;
-          totalCost += fileCost;
-          totalPages += copies;
-
-          // Delete file from storage after successful print (fire and forget)
-          setPrintProgress(prev => ({ ...prev, status: 'Cleaning up...' }));
+          // Delete file from storage (fire and forget)
           deleteFileFromSupabase(file.fileUrl).catch(console.error);
 
         } catch (fileError) {
@@ -192,17 +195,15 @@ export default function MerchantDashboardPage() {
         }
       }
 
-      // Update stats (fire and forget - don't block UI)
-      if (totalPages > 0) {
-        updateMerchantStats(totalCost, totalPages).catch(console.error);
-      }
+      // Get UPI ID - use merchant's or fallback
+      const upiId = userData?.upiId || FALLBACK_UPI_ID;
 
-      // Update job status - this triggers payment screen for user
+      // Update job status to awaiting payment - this triggers user payment screen
       const updateData = {
         status: 'awaitingPayment',
         cost: totalCost,
         totalPages,
-        merchantUpiId: userData?.upiId || '',
+        merchantUpiId: upiId,
         merchantName: merchantName,
         processedAt: new Date(),
       };
@@ -211,14 +212,17 @@ export default function MerchantDashboardPage() {
         updateData.failedFiles = failedFiles;
       }
       
-      // Fire and forget - don't wait for this
+      // Update job - fire and forget
       updatePrintJob(job.id, updateData).catch(console.error);
+      
+      // Update stats - fire and forget
+      updateMerchantStats(totalCost, totalPages).catch(console.error);
       
       setSnackbar({
         open: true,
         message: failedFiles.length === 0 
-          ? `Successfully printed ${totalPages} pages. Cost: ₹${totalCost}` 
-          : `Printed ${totalPages} pages with ${failedFiles.length} failed files`,
+          ? `✅ Printed ${totalPages} pages. Cost: ₹${totalCost}. Awaiting payment.` 
+          : `⚠️ Printed with ${failedFiles.length} failed files`,
         severity: failedFiles.length === 0 ? 'success' : 'warning'
       });
 
@@ -230,14 +234,11 @@ export default function MerchantDashboardPage() {
         severity: 'error'
       });
       
-      // Revert status on complete failure (fire and forget)
       updatePrintJob(job.id, { status: 'pending' }).catch(console.error);
     } finally {
-      // Always clear processing state after 1 second
-      setTimeout(() => {
-        setProcessingJobId(null);
-        setPrintProgress({ current: 0, total: 0, fileName: '', status: '' });
-      }, 1000);
+      // Clear processing state immediately
+      setProcessingJobId(null);
+      setPrintProgress({ current: 0, total: 0, fileName: '', status: '' });
     }
   };
 
