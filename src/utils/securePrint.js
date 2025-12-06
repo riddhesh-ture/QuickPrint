@@ -279,7 +279,7 @@ export async function securePrintImage(fileBlob, fileName, specs, merchantName) 
             // Auto close after timeout (in case print is cancelled)
             setTimeout(function() {
               window.close();
-            }, 300000); // 5 minutes
+            }, 60000); // 1 minute instead of 5
           </script>
         </body>
         </html>
@@ -288,8 +288,8 @@ export async function securePrintImage(fileBlob, fileName, specs, merchantName) 
       printWindow.document.write(html);
       printWindow.document.close();
       
-      // Resolve after a delay
-      setTimeout(resolve, 120000);
+      // Resolve after 3 seconds - don't wait for print to complete
+      setTimeout(resolve, 3000);
     };
 
     reader.onerror = () => reject(new Error('Failed to read image file'));
@@ -381,7 +381,7 @@ export async function securePrintPDF(fileBlob, fileName, specs, merchantName) {
                 // Auto print when all pages rendered
                 setTimeout(function() {
                   window.print();
-                }, 1000);
+                }, 500);
                 
               } catch (error) {
                 console.error('PDF render error:', error);
@@ -399,7 +399,7 @@ export async function securePrintPDF(fileBlob, fileName, specs, merchantName) {
             // Auto close after timeout
             setTimeout(function() {
               window.close();
-            }, 300000);
+            }, 60000); // 1 minute
           </script>
         </body>
         </html>
@@ -408,7 +408,8 @@ export async function securePrintPDF(fileBlob, fileName, specs, merchantName) {
       printWindow.document.write(html);
       printWindow.document.close();
       
-      setTimeout(resolve, 120000);
+      // Resolve after 3 seconds - don't wait for print to complete
+      setTimeout(resolve, 3000);
     };
 
     reader.onerror = () => reject(new Error('Failed to read PDF file'));
@@ -443,7 +444,6 @@ export async function securePrintDOCX(fileBlob, fileName, specs, merchantName) {
         }
       `;
 
-      // For DOCX, we use mammoth.js to convert to HTML
       const html = `
         <!DOCTYPE html>
         <html>
@@ -455,19 +455,11 @@ export async function securePrintDOCX(fileBlob, fileName, specs, merchantName) {
             ${SECURITY_CSS}
             ${pageCSS}
             .docx-content {
-              background: white;
-              padding: 40px;
               max-width: 800px;
               margin: 0 auto;
-              box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-              ${!isColor ? 'filter: grayscale(100%);' : ''}
-            }
-            .docx-content img {
-              max-width: 100%;
-              height: auto;
-            }
-            .docx-content p {
-              margin: 0 0 10px 0;
+              padding: 20px;
+              background: white;
+              font-family: Arial, sans-serif;
               line-height: 1.6;
             }
             .docx-content h1, .docx-content h2, .docx-content h3 {
@@ -515,7 +507,7 @@ export async function securePrintDOCX(fileBlob, fileName, specs, merchantName) {
                 // Auto print after rendering
                 setTimeout(function() {
                   window.print();
-                }, 1000);
+                }, 500);
               })
               .catch(function(error) {
                 document.getElementById('content').innerHTML = '<div style="color:red;">Error loading document: ' + error.message + '</div>';
@@ -527,7 +519,7 @@ export async function securePrintDOCX(fileBlob, fileName, specs, merchantName) {
             
             setTimeout(function() {
               window.close();
-            }, 300000);
+            }, 60000); // 1 minute
           </script>
         </body>
         </html>
@@ -536,7 +528,8 @@ export async function securePrintDOCX(fileBlob, fileName, specs, merchantName) {
       printWindow.document.write(html);
       printWindow.document.close();
       
-      setTimeout(resolve, 120000);
+      // Resolve after 3 seconds - don't wait for print to complete
+      setTimeout(resolve, 3000);
     };
 
     reader.onerror = () => reject(new Error('Failed to read document file'));

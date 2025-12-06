@@ -129,14 +129,14 @@ export default function MerchantDashboardPage() {
     setProcessingJobId(job.id);
     setPrintProgress({ current: 0, total: job.files.length, fileName: '', status: 'Starting...' });
 
-    try {
-      // Update status to processing
-      await updatePrintJob(job.id, { status: 'processing' });
-      
-      let totalCost = 0;
-      let totalPages = 0;
-      const failedFiles = [];
+    // Update status to processing immediately (fire and forget)
+    updatePrintJob(job.id, { status: 'processing' }).catch(console.error);
+    
+    let totalCost = 0;
+    let totalPages = 0;
+    const failedFiles = [];
 
+    try {
       for (let i = 0; i < job.files.length; i++) {
         const file = job.files[i];
         setPrintProgress({
@@ -164,7 +164,7 @@ export default function MerchantDashboardPage() {
 
           setPrintProgress(prev => ({ ...prev, status: 'Printing...' }));
 
-          // Print each copy securely
+          // Print each copy securely - this now resolves in 3 seconds
           for (let c = 0; c < copies; c++) {
             if (copies > 1) {
               setPrintProgress(prev => ({
@@ -182,9 +182,9 @@ export default function MerchantDashboardPage() {
           totalCost += fileCost;
           totalPages += copies;
 
-          // Delete file from storage after successful print
+          // Delete file from storage after successful print (fire and forget)
           setPrintProgress(prev => ({ ...prev, status: 'Cleaning up...' }));
-          await deleteFileFromSupabase(file.fileUrl);
+          deleteFileFromSupabase(file.fileUrl).catch(console.error);
 
         } catch (fileError) {
           console.error(`Error processing file ${file.name}:`, fileError);
@@ -192,45 +192,35 @@ export default function MerchantDashboardPage() {
         }
       }
 
-      // Update stats
+      // Update stats (fire and forget - don't block UI)
       if (totalPages > 0) {
-        await updateMerchantStats(totalCost, totalPages);
+        updateMerchantStats(totalCost, totalPages).catch(console.error);
       }
 
-      // Update job status
-      if (failedFiles.length === 0) {
-        await updatePrintJob(job.id, {
-          status: 'awaitingPayment',
-          cost: totalCost,
-          totalPages,
-          merchantUpiId: userData?.upiId || '',
-          merchantName: merchantName,
-          processedAt: new Date(),
-        });
-        
-        setSnackbar({
-          open: true,
-          message: `Successfully printed ${totalPages} pages. Cost: ₹${totalCost}`,
-          severity: 'success'
-        });
-      } else {
-        // Some files failed
-        await updatePrintJob(job.id, {
-          status: 'awaitingPayment',
-          cost: totalCost,
-          totalPages,
-          merchantUpiId: userData?.upiId || '',
-          merchantName: merchantName,
-          processedAt: new Date(),
-          failedFiles: failedFiles,
-        });
-        
-        setSnackbar({
-          open: true,
-          message: `Printed ${totalPages} pages with ${failedFiles.length} failed files`,
-          severity: 'warning'
-        });
+      // Update job status - this triggers payment screen for user
+      const updateData = {
+        status: 'awaitingPayment',
+        cost: totalCost,
+        totalPages,
+        merchantUpiId: userData?.upiId || '',
+        merchantName: merchantName,
+        processedAt: new Date(),
+      };
+      
+      if (failedFiles.length > 0) {
+        updateData.failedFiles = failedFiles;
       }
+      
+      // Fire and forget - don't wait for this
+      updatePrintJob(job.id, updateData).catch(console.error);
+      
+      setSnackbar({
+        open: true,
+        message: failedFiles.length === 0 
+          ? `Successfully printed ${totalPages} pages. Cost: ₹${totalCost}` 
+          : `Printed ${totalPages} pages with ${failedFiles.length} failed files`,
+        severity: failedFiles.length === 0 ? 'success' : 'warning'
+      });
 
     } catch (e) {
       console.error('Job processing error:', e);
@@ -240,11 +230,14 @@ export default function MerchantDashboardPage() {
         severity: 'error'
       });
       
-      // Revert status on complete failure
-      await updatePrintJob(job.id, { status: 'pending' });
+      // Revert status on complete failure (fire and forget)
+      updatePrintJob(job.id, { status: 'pending' }).catch(console.error);
     } finally {
-      setProcessingJobId(null);
-      setPrintProgress({ current: 0, total: 0, fileName: '', status: '' });
+      // Always clear processing state after 1 second
+      setTimeout(() => {
+        setProcessingJobId(null);
+        setPrintProgress({ current: 0, total: 0, fileName: '', status: '' });
+      }, 1000);
     }
   };
 
